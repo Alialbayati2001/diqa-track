@@ -2,501 +2,852 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>متابعة الطلب - Diqa Maps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تتبع الطلب - Diqa</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     :root{
-      --bg:#0f172a;
-      --card:#111827;
-      --card-2:#172033;
-      --line:#263244;
-      --text:#e5e7eb;
-      --muted:#94a3b8;
-      --green:#22c55e;
-      --amber:#f59e0b;
-      --blue:#38bdf8;
-      --red:#ef4444;
-      --white:#fff;
+      --bg:#0f1411;
+      --card:#171d18;
+      --card2:#1c241e;
+      --line:#2b352d;
+      --text:#eef6ea;
+      --muted:#a8b7a7;
+      --green:#c3e645;
+      --green-dark:#94b800;
+      --orange:#ffb020;
+      --red:#ff5d5d;
+      --blue:#57a7ff;
     }
+
     *{box-sizing:border-box}
     body{
       margin:0;
-      font-family:Tahoma,Arial,sans-serif;
-      background:linear-gradient(180deg,#08101f 0%, #0f172a 100%);
+      font-family:Tahoma, Arial, sans-serif;
+      background:linear-gradient(180deg,#0e130f,#151c16);
       color:var(--text);
-      min-height:100vh;
     }
+
     .wrap{
-      max-width:760px;
+      max-width:900px;
       margin:0 auto;
       padding:18px;
     }
-    .hero{
-      background:linear-gradient(135deg,#111827 0%,#162033 100%);
+
+    .top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:16px;
+      flex-wrap:wrap;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:24px;
+      font-weight:700;
+    }
+
+    .logo{
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      background:var(--green);
+      color:#111;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+    }
+
+    .token-box{
+      font-size:13px;
+      color:var(--muted);
+      background:rgba(255,255,255,.04);
       border:1px solid var(--line);
-      border-radius:22px;
-      padding:22px;
-      box-shadow:0 12px 30px rgba(0,0,0,.25);
+      padding:8px 12px;
+      border-radius:12px;
     }
-    .brand{font-size:14px;color:var(--blue);margin-bottom:10px}
-    h1{margin:0 0 8px;font-size:28px}
-    .sub{color:var(--muted);font-size:14px;line-height:1.8}
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-      gap:14px;
-      margin-top:16px;
-    }
+
     .card{
-      background:rgba(17,24,39,.94);
+      background:linear-gradient(180deg,var(--card),var(--card2));
       border:1px solid var(--line);
       border-radius:18px;
       padding:16px;
-      box-shadow:0 8px 24px rgba(0,0,0,.18);
+      margin-bottom:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.18);
     }
-    .label{font-size:12px;color:var(--muted);margin-bottom:8px}
-    .value{font-size:24px;font-weight:700}
-    .value.sm{font-size:20px}
-    .badge{
+
+    .hero{
+      display:grid;
+      grid-template-columns:1.2fr .8fr;
+      gap:14px;
+    }
+
+    @media (max-width: 800px){
+      .hero{
+        grid-template-columns:1fr;
+      }
+    }
+
+    .status-pill{
       display:inline-flex;
       align-items:center;
       gap:8px;
-      border-radius:999px;
       padding:10px 14px;
+      border-radius:999px;
       font-weight:700;
       font-size:14px;
+      margin-bottom:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.04);
     }
-    .badge.reg{background:rgba(56,189,248,.15);color:#7dd3fc;border:1px solid rgba(56,189,248,.35)}
-    .badge.near{background:rgba(245,158,11,.14);color:#fbbf24;border:1px solid rgba(245,158,11,.35)}
-    .badge.done{background:rgba(34,197,94,.14);color:#86efac;border:1px solid rgba(34,197,94,.35)}
-    .badge.ret{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.35)}
-    .timeline{margin-top:18px;display:flex;flex-direction:column;gap:10px}
-    .step{
-      display:flex;
-      align-items:flex-start;
-      gap:12px;
-      background:var(--card-2);
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:12px 14px;
-    }
+
     .dot{
-      width:13px;height:13px;border-radius:50%;margin-top:5px;background:#475569;flex:0 0 auto;
-      box-shadow:0 0 0 4px rgba(71,85,105,.18);
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background:var(--green);
+      box-shadow:0 0 0 4px rgba(195,230,69,.15);
     }
-    .step.active .dot{background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.2)}
-    .step .ttl{font-weight:700;margin-bottom:4px}
-    .step .meta{font-size:13px;color:var(--muted);line-height:1.7}
-    .notice{
-      margin-top:16px;
-      border-radius:16px;
-      padding:14px 16px;
-      background:rgba(34,197,94,.12);
-      border:1px solid rgba(34,197,94,.3);
-      color:#bbf7d0;
-      font-weight:700;
-      display:none;
+
+    h1,h2,h3,p{margin:0}
+    .title{
+      font-size:26px;
+      font-weight:800;
+      margin-bottom:8px;
     }
-    .notice.warn{
-      display:block;
-      background:rgba(245,158,11,.12);
-      border-color:rgba(245,158,11,.32);
-      color:#fde68a;
+
+    .sub{
+      color:var(--muted);
+      line-height:1.8;
+      font-size:14px;
     }
-    .notice.show{display:block}
-    .muted{color:var(--muted)}
-    .center{text-align:center}
-    .error{
-      background:rgba(239,68,68,.12);
-      border:1px solid rgba(239,68,68,.35);
-      color:#fecaca;
-      border-radius:16px;
-      padding:14px 16px;
-      margin-top:16px;
-      display:none;
-    }
-    .footer{
+
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:12px;
       margin-top:14px;
-      text-align:center;
+    }
+
+    @media (max-width: 700px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    .mini{
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+    }
+
+    .mini .label{
       color:var(--muted);
       font-size:12px;
+      margin-bottom:8px;
     }
+
+    .mini .value{
+      font-size:16px;
+      font-weight:700;
+      line-height:1.7;
+    }
+
+    #map{
+      width:100%;
+      height:380px;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid var(--line);
+    }
+
+    .timeline{
+      display:grid;
+      gap:10px;
+    }
+
+    .step{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      padding:10px 0;
+      border-bottom:1px dashed rgba(255,255,255,.08);
+    }
+
+    .step:last-child{border-bottom:none}
+
+    .step .icon{
+      width:28px;
+      height:28px;
+      border-radius:50%;
+      background:rgba(195,230,69,.14);
+      color:var(--green);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      flex:0 0 28px;
+      margin-top:2px;
+    }
+
+    .step.done .icon{
+      background:rgba(87,167,255,.14);
+      color:var(--blue);
+    }
+
+    .step.active .icon{
+      background:rgba(255,176,32,.14);
+      color:var(--orange);
+    }
+
+    .step-text{
+      font-size:14px;
+      line-height:1.8;
+    }
+
+    .step-text b{
+      display:block;
+      margin-bottom:2px;
+      font-size:15px;
+    }
+
+    .footer-note{
+      color:var(--muted);
+      text-align:center;
+      font-size:12px;
+      margin-top:10px;
+      line-height:1.8;
+    }
+
+    .error{
+      color:#ffd6d6;
+      background:rgba(255,93,93,.08);
+      border:1px solid rgba(255,93,93,.18);
+      padding:12px;
+      border-radius:12px;
+      line-height:1.8;
+    }
+
+    .loading{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .spinner{
+      width:18px;
+      height:18px;
+      border-radius:50%;
+      border:2px solid rgba(255,255,255,.15);
+      border-top-color:var(--green);
+      animation:spin 1s linear infinite;
+    }
+
+    @keyframes spin{
+      to{transform:rotate(360deg)}
+    }
+
+    .hidden{display:none!important}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="hero">
-      <div class="brand">Diqa Maps</div>
-      <h1>متابعة الطلب</h1>
-      <div class="sub" id="page-sub">جاري تحميل حالة الطلب الحالية…</div>
+    <div class="top">
+      <div class="brand">
+        <div class="logo">DQ</div>
+        <div>متابعة الطلب</div>
+      </div>
+      <div class="token-box">رقم التتبع: <span id="tokenText">---</span></div>
+    </div>
 
-      <div class="grid">
+    <div id="loadingBox" class="card">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>جاري تحميل حالة الطلب...</div>
+      </div>
+    </div>
+
+    <div id="errorBox" class="card hidden">
+      <div class="error" id="errorText">تعذر تحميل الطلب.</div>
+    </div>
+
+    <div id="contentBox" class="hidden">
+      <div class="hero">
         <div class="card">
-          <div class="label">حالة الطلب</div>
-          <div id="status-badge" class="badge reg">جاري التحميل…</div>
+          <div id="statusPill" class="status-pill">
+            <span class="dot"></span>
+            <span id="statusText">---</span>
+          </div>
+
+          <div class="title" id="orderTitle">طلبكم قيد المتابعة</div>
+          <p class="sub" id="orderSub">
+            يمكنك متابعة حالة الطلب وموقع المندوب التقريبي من هذه الصفحة.
+          </p>
+
+          <div class="grid">
+            <div class="mini">
+              <div class="label">اسم الزبون</div>
+              <div class="value" id="customerName">---</div>
+            </div>
+            <div class="mini">
+              <div class="label">رقم الطلب</div>
+              <div class="value" id="orderNumber">---</div>
+            </div>
+            <div class="mini">
+              <div class="label">المندوب</div>
+              <div class="value" id="driverName">---</div>
+            </div>
+            <div class="mini">
+              <div class="label">وقت الوصول التقريبي</div>
+              <div class="value" id="etaText">---</div>
+            </div>
+            <div class="mini">
+              <div class="label">العنوان</div>
+              <div class="value" id="addressText">---</div>
+            </div>
+            <div class="mini">
+              <div class="label">آخر تحديث</div>
+              <div class="value" id="updatedAtText">---</div>
+            </div>
+          </div>
         </div>
+
         <div class="card">
-          <div class="label">الوقت المتبقي</div>
-          <div id="eta-value" class="value">—</div>
-        </div>
-        <div class="card">
-          <div class="label">المندوب</div>
-          <div id="driver-value" class="value sm">—</div>
-        </div>
-        <div class="card">
-          <div class="label">الزبون</div>
-          <div id="client-value" class="value sm">—</div>
+          <h3 style="margin-bottom:12px">مراحل الطلب</h3>
+          <div class="timeline" id="timeline">
+            <div class="step" id="step_created">
+              <div class="icon">1</div>
+              <div class="step-text">
+                <b>تم تسجيل الطلب</b>
+                تم استلام الطلب بالنظام.
+              </div>
+            </div>
+
+            <div class="step" id="step_preparing">
+              <div class="icon">2</div>
+              <div class="step-text">
+                <b>قيد التجهيز</b>
+                الطلب قيد التحضير أو المراجعة.
+              </div>
+            </div>
+
+            <div class="step" id="step_onway">
+              <div class="icon">3</div>
+              <div class="step-text">
+                <b>في الطريق</b>
+                المندوب متجه إليك.
+              </div>
+            </div>
+
+            <div class="step" id="step_delivered">
+              <div class="icon">4</div>
+              <div class="step-text">
+                <b>تم التسليم</b>
+                تم إكمال الطلب.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div id="nearby-notice" class="notice">المندوب قريب منك الآن.</div>
-      <div id="page-error" class="error"></div>
+      <div class="card">
+        <h3 style="margin-bottom:12px">الخريطة</h3>
+        <div id="map"></div>
+      </div>
 
-      <div class="timeline" id="timeline"></div>
-      <div class="footer" id="last-updated">—</div>
+      <div class="footer-note">
+        قد يكون موقع المندوب ووقت الوصول تقريبيين ويعتمدان على آخر تحديث متوفر بالنظام.
+      </div>
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      get,
+      onValue,
+      off
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    // =========================
+    // 1) ضع إعدادات Firebase الخاصة بك هنا
+    // =========================
     const firebaseConfig = {
-      apiKey: "AIzaSyDWuD_6q44CXwGiexOyntJJMcF4wmYdaIo",
-      authDomain: "diqa-maps.firebaseapp.com",
-      databaseURL: "https://diqa-maps-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "diqa-maps",
-      storageBucket: "diqa-maps.appspot.com",
-      messagingSenderId: "385120206470",
-      appId: "1:385120206470:web:75bc5f0affa577f5109b07"
+      apiKey: "ضع_apiKey_هنا",
+      authDomain: "ضع_authDomain_هنا",
+      databaseURL: "ضع_databaseURL_هنا",
+      projectId: "ضع_projectId_هنا",
+      storageBucket: "ضع_storageBucket_هنا",
+      messagingSenderId: "ضع_messagingSenderId_هنا",
+      appId: "ضع_appId_هنا"
     };
 
-    try { firebase.initializeApp(firebaseConfig); } catch(_) {}
-    const db = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-    const DELIVERY_ALLOWED_METERS = 250;
-    const ETA_FALLBACK_SPEED_KMH = 32;
-    const ETA_MIN_MOVING_SPEED_KMH = 3;
+    const $ = (id) => document.getElementById(id);
 
-    const statusBadge = document.getElementById('status-badge');
-    const etaValue = document.getElementById('eta-value');
-    const driverValue = document.getElementById('driver-value');
-    const clientValue = document.getElementById('client-value');
-    const pageSub = document.getElementById('page-sub');
-    const pageError = document.getElementById('page-error');
-    const timeline = document.getElementById('timeline');
-    const nearbyNotice = document.getElementById('nearby-notice');
-    const lastUpdated = document.getElementById('last-updated');
+    const els = {
+      loadingBox: $("loadingBox"),
+      errorBox: $("errorBox"),
+      errorText: $("errorText"),
+      contentBox: $("contentBox"),
+      tokenText: $("tokenText"),
+      statusText: $("statusText"),
+      orderTitle: $("orderTitle"),
+      orderSub: $("orderSub"),
+      customerName: $("customerName"),
+      orderNumber: $("orderNumber"),
+      driverName: $("driverName"),
+      etaText: $("etaText"),
+      addressText: $("addressText"),
+      updatedAtText: $("updatedAtText"),
+      statusPill: $("statusPill"),
+      timeline: $("timeline")
+    };
 
-    let clientsCache = {};
-    let ordersRootCache = {};
-    let driversMetaCache = {};
-    let driversLocationsCache = {};
-    let activeClient = null;
-    let activeOrder = null;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("t");
 
-    function getToken(){
-      const url = new URL(window.location.href);
-      return String(url.searchParams.get('t') || '').trim();
+    els.tokenText.textContent = token || "---";
+
+    let map, customerMarker, driverMarker, routeLine;
+    let activeDriverRef = null;
+    let activeOrderUnsub = null;
+
+    function showError(msg) {
+      els.loadingBox.classList.add("hidden");
+      els.contentBox.classList.add("hidden");
+      els.errorBox.classList.remove("hidden");
+      els.errorText.textContent = msg;
     }
 
-    function escapeHtml(str){
-      return String(str || '')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#039;');
+    function showContent() {
+      els.loadingBox.classList.add("hidden");
+      els.errorBox.classList.add("hidden");
+      els.contentBox.classList.remove("hidden");
     }
 
-    function tsToMs(ts) {
-      if (ts == null) return 0;
-      if (typeof ts === 'object' && typeof ts.toMillis === 'function') return ts.toMillis();
-      if (typeof ts === 'string') {
-        const t = Date.parse(ts);
-        return Number.isFinite(t) ? t : 0;
+    function safe(v, fallback = "---") {
+      return v === undefined || v === null || v === "" ? fallback : v;
+    }
+
+    function pick(obj, keys, fallback = null) {
+      for (const key of keys) {
+        if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+          return obj[key];
+        }
       }
-      const n = Number(ts);
-      if (!Number.isFinite(n)) return 0;
-      return n < 1e12 ? n * 1000 : n;
+      return fallback;
     }
 
-    function haversineMeters(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toRad = a => a * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    function num(v) {
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function formatDate(v) {
+      if (!v) return "---";
+      try {
+        if (typeof v === "number") {
+          return new Date(v).toLocaleString("ar-IQ");
+        }
+        if (!isNaN(Date.parse(v))) {
+          return new Date(v).toLocaleString("ar-IQ");
+        }
+        return String(v);
+      } catch {
+        return String(v);
+      }
+    }
+
+    function normalizeStatus(raw) {
+      if (!raw) return "created";
+      const s = String(raw).toLowerCase().trim();
+
+      if (
+        s.includes("delivered") ||
+        s.includes("complete") ||
+        s.includes("تم التسليم") ||
+        s.includes("واصل") ||
+        s.includes("مستلم")
+      ) return "delivered";
+
+      if (
+        s.includes("on the way") ||
+        s.includes("out for delivery") ||
+        s.includes("بالطريق") ||
+        s.includes("في الطريق") ||
+        s.includes("خرج") ||
+        s.includes("nearby") ||
+        s.includes("قريب")
+      ) return "onway";
+
+      if (
+        s.includes("preparing") ||
+        s.includes("processing") ||
+        s.includes("pending") ||
+        s.includes("قيد التجهيز") ||
+        s.includes("قيد التحضير") ||
+        s.includes("مسجل") ||
+        s.includes("مجهز")
+      ) return "preparing";
+
+      return "created";
+    }
+
+    function statusMeta(status) {
+      switch (status) {
+        case "delivered":
+          return {
+            text: "تم تسليم الطلب",
+            color: "#57a7ff"
+          };
+        case "onway":
+          return {
+            text: "الطلب في الطريق إليك",
+            color: "#ffb020"
+          };
+        case "preparing":
+          return {
+            text: "الطلب قيد التجهيز",
+            color: "#c3e645"
+          };
+        default:
+          return {
+            text: "تم تسجيل الطلب",
+            color: "#c3e645"
+          };
+      }
+    }
+
+    function setStatusUi(status) {
+      const meta = statusMeta(status);
+      els.statusText.textContent = meta.text;
+      const dot = els.statusPill.querySelector(".dot");
+      dot.style.background = meta.color;
+      dot.style.boxShadow = `0 0 0 4px ${hexToRgba(meta.color, 0.18)}`;
+
+      document.querySelectorAll(".step").forEach(s => {
+        s.classList.remove("done", "active");
+      });
+
+      if (status === "created") {
+        $("step_created").classList.add("active");
+      } else if (status === "preparing") {
+        $("step_created").classList.add("done");
+        $("step_preparing").classList.add("active");
+      } else if (status === "onway") {
+        $("step_created").classList.add("done");
+        $("step_preparing").classList.add("done");
+        $("step_onway").classList.add("active");
+      } else if (status === "delivered") {
+        $("step_created").classList.add("done");
+        $("step_preparing").classList.add("done");
+        $("step_onway").classList.add("done");
+        $("step_delivered").classList.add("active");
+      }
+    }
+
+    function hexToRgba(hex, alpha) {
+      const clean = hex.replace("#", "");
+      const bigint = parseInt(clean, 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     }
 
-    function normalizePreferredMotoSpeed(speedKmh){
-      const n = Number(speedKmh);
-      if (!Number.isFinite(n) || n < 0) return null;
-      if (n <= ETA_MIN_MOVING_SPEED_KMH) return 0;
-      if (n > 95) return null;
-      return Math.round(n * 10) / 10;
+    function estimateEtaText(driverLat, driverLng, customerLat, customerLng, status) {
+      if (status === "delivered") return "تم التسليم";
+      if ([driverLat, driverLng, customerLat, customerLng].some(v => v == null)) return "غير متوفر";
+
+      const km = haversineKm(driverLat, driverLng, customerLat, customerLng);
+
+      // سرعة تقريبية داخل المدينة
+      const speedKmH = 22;
+      const minutes = Math.max(2, Math.round((km / speedKmH) * 60));
+
+      if (minutes < 60) return `حوالي ${minutes} دقيقة`;
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `حوالي ${h} ساعة و ${m} دقيقة`;
     }
 
-    function getPreferredDriverSpeedKmh(src){
-      const bag = src || {};
-      const a = normalizePreferredMotoSpeed(bag.traccarSpeedKmh);
-      if (Number.isFinite(a) && a >= ETA_MIN_MOVING_SPEED_KMH) return a;
-      const b = normalizePreferredMotoSpeed(bag.computedSpeedKmh);
-      if (Number.isFinite(b) && b >= ETA_MIN_MOVING_SPEED_KMH) return b;
-      const c = normalizePreferredMotoSpeed(bag.speedKmh);
-      if (Number.isFinite(c) && c >= ETA_MIN_MOVING_SPEED_KMH) return c;
-      return ETA_FALLBACK_SPEED_KMH;
+    function initMap(lat = 33.3152, lng = 44.3661) {
+      map = L.map("map", { zoomControl: true }).setView([lat, lng], 13);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(map);
     }
 
-    function calcEtaMinutes(distanceM, speedKmh){
-      const d = Number(distanceM);
-      if (!Number.isFinite(d) || d < 0) return null;
-      const usedSpeed = (Number.isFinite(Number(speedKmh)) && Number(speedKmh) > ETA_MIN_MOVING_SPEED_KMH)
-        ? Number(speedKmh)
-        : ETA_FALLBACK_SPEED_KMH;
-      return Math.max(1, Math.round(((d / 1000) / usedSpeed) * 60));
-    }
-
-    function formatEtaMinutes(mins){
-      const n = Number(mins);
-      if (!Number.isFinite(n) || n <= 0) return '—';
-      if (n < 60) return `${Math.round(n)} دقيقة`;
-      const h = Math.floor(n / 60);
-      const m = Math.round(n % 60);
-      return m ? `${h} ساعة ${m} دقيقة` : `${h} ساعة`;
-    }
-
-    function formatDate(ts){
-      const ms = tsToMs(ts);
-      if (!ms) return '—';
-      return new Date(ms).toLocaleString('ar-IQ');
-    }
-
-    function statusLabel(st){
-      const s = String(st || 'registered');
-      if (s === 'registered') return 'بالطريق إليك';
-      if (s === 'nearby') return 'المندوب قريب منك';
-      if (s === 'delivered') return 'تم التسليم';
-      if (s === 'returned') return 'راجع';
-      return s;
-    }
-
-    function statusBadgeClass(st){
-      const s = String(st || 'registered');
-      if (s === 'nearby') return 'badge near';
-      if (s === 'delivered') return 'badge done';
-      if (s === 'returned') return 'badge ret';
-      return 'badge reg';
-    }
-
-    function flattenOrders(root){
-      const out = [];
-      Object.entries(root || {}).forEach(([dateKey, bucket]) => {
-        if (!bucket || typeof bucket !== 'object') return;
-        Object.entries(bucket).forEach(([id, order]) => {
-          if (!order || typeof order !== 'object') return;
-          out.push({ id, bucketDate: dateKey, ...order });
-        });
-      });
-      return out;
-    }
-
-    function chooseBestOrder(clientId){
-      const all = flattenOrders(ordersRootCache).filter(o => String(o.clientId || '') === String(clientId || ''));
-      if (!all.length) return null;
-
-      const weight = (o) => {
-        const s = String(o.status || 'registered');
-        if (s === 'nearby') return 0;
-        if (s === 'registered') return 1;
-        if (s === 'delivered') return 2;
-        if (s === 'returned') return 3;
-        return 4;
-      };
-
-      all.sort((a,b)=>{
-        const wa = weight(a), wb = weight(b);
-        if (wa !== wb) return wa - wb;
-        const ta = tsToMs(a.createdAt || a.nearbyAt || a.deliveredAt || a.returnedAt || 0);
-        const tb = tsToMs(b.createdAt || b.nearbyAt || b.deliveredAt || b.returnedAt || 0);
-        return tb - ta;
-      });
-      return all[0] || null;
-    }
-
-    function computeOrderEta(order){
-      if (!order) return { etaText:'—', isNearby:false, distanceM:null };
-      if (String(order.status || '') === 'nearby') return { etaText:'قريب جداً', isNearby:true, distanceM:0 };
-      if (String(order.status || '') === 'delivered') return { etaText:'تم التسليم', isNearby:false, distanceM:0 };
-      if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null };
-
-      const loc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
-      if (!loc) return { etaText:'جاري تحديد موقع المندوب', isNearby:false, distanceM:null };
-
-      const lat1 = Number(loc.lat), lng1 = Number(loc.lng), lat2 = Number(order.lat), lng2 = Number(order.lng);
-      if (![lat1,lng1,lat2,lng2].every(Number.isFinite)) {
-        return { etaText:'—', isNearby:false, distanceM:null };
+    function drawMap(customerLat, customerLng, driverLat, driverLng) {
+      if (!map) {
+        initMap(customerLat || 33.3152, customerLng || 44.3661);
       }
 
-      const distanceM = haversineMeters(lat1, lng1, lat2, lng2);
-      const isNearby = distanceM <= DELIVERY_ALLOWED_METERS;
-      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM };
-      const speedKmh = getPreferredDriverSpeedKmh(loc);
-      const etaMin = calcEtaMinutes(distanceM, speedKmh);
+      if (customerMarker) map.removeLayer(customerMarker);
+      if (driverMarker) map.removeLayer(driverMarker);
+      if (routeLine) map.removeLayer(routeLine);
+
+      const points = [];
+
+      if (customerLat != null && customerLng != null) {
+        customerMarker = L.marker([customerLat, customerLng]).addTo(map)
+          .bindPopup("موقع الزبون");
+        points.push([customerLat, customerLng]);
+      }
+
+      if (driverLat != null && driverLng != null) {
+        driverMarker = L.marker([driverLat, driverLng]).addTo(map)
+          .bindPopup("موقع المندوب");
+        points.push([driverLat, driverLng]);
+      }
+
+      if (
+        customerLat != null && customerLng != null &&
+        driverLat != null && driverLng != null
+      ) {
+        routeLine = L.polyline([
+          [driverLat, driverLng],
+          [customerLat, customerLng]
+        ], { weight: 4 }).addTo(map);
+      }
+
+      if (points.length === 1) {
+        map.setView(points[0], 15);
+      } else if (points.length > 1) {
+        map.fitBounds(points, { padding: [40, 40] });
+      }
+    }
+
+    function possibleDriverPaths(driverId) {
+      return [
+        `driversLocations/${driverId}`,
+        `driverLocations/${driverId}`,
+        `drivers/${driverId}/location`,
+        `drivers/${driverId}/lastLocation`,
+        `employees/${driverId}/location`
+      ];
+    }
+
+    async function findWorkingDriverPath(driverId) {
+      for (const path of possibleDriverPaths(driverId)) {
+        const snap = await get(ref(db, path));
+        if (snap.exists()) return path;
+      }
+      return null;
+    }
+
+    function extractOrder(raw, orderId = "", dateKey = "") {
+      const customerLat = num(pick(raw, [
+        "customerLat", "lat", "latitude", "destLat", "deliveryLat", "clientLat"
+      ]));
+
+      const customerLng = num(pick(raw, [
+        "customerLng", "lng", "longitude", "destLng", "deliveryLng", "clientLng"
+      ]));
+
+      const driverId = String(pick(raw, [
+        "driverId", "assignedDriverId", "courierId", "delegateId"
+      ], "") || "");
+
+      const driverName = pick(raw, [
+        "driverName", "assignedDriverName", "courierName", "delegateName"
+      ], "---");
+
+      const customerName = pick(raw, [
+        "customerName", "name", "clientName", "customer", "buyerName"
+      ], "---");
+
+      const address = pick(raw, [
+        "address", "customerAddress", "deliveryAddress", "locationText", "area"
+      ], "---");
+
+      const statusRaw = pick(raw, [
+        "status", "orderStatus", "deliveryStatus", "state"
+      ], "created");
+
+      const trackingToken = pick(raw, [
+        "trackingToken", "trackToken", "token", "trackingId"
+      ], "");
+
+      const orderNumber = pick(raw, [
+        "orderNumber", "invoiceNumber", "id", "number"
+      ], orderId || "---");
+
+      const updatedAt = pick(raw, [
+        "updatedAt", "lastUpdated", "timestamp", "createdAt", "dateTime"
+      ], "");
+
       return {
-        etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : '—',
-        isNearby:false,
-        distanceM,
-        etaMin
+        raw,
+        orderId,
+        dateKey,
+        trackingToken,
+        customerLat,
+        customerLng,
+        driverId,
+        driverName,
+        customerName,
+        address,
+        statusRaw,
+        status: normalizeStatus(statusRaw),
+        orderNumber,
+        updatedAt
       };
     }
 
-    function driverNameById(id){
-      const meta = driversMetaCache[String(id || '')] || {};
-      return meta.name || id || '—';
+    async function findOrderByToken(trackToken) {
+      // يبحث في آخر 5 أيام داخل ordersByDate
+      // إذا عندك index للتوكن لاحقاً نصير أسرع بكثير
+      const rootSnap = await get(ref(db, "ordersByDate"));
+      if (!rootSnap.exists()) return null;
+
+      const allDates = rootSnap.val();
+      const dateKeys = Object.keys(allDates).sort().reverse().slice(0, 5);
+
+      for (const dateKey of dateKeys) {
+        const dayOrders = allDates[dateKey] || {};
+        for (const orderId of Object.keys(dayOrders)) {
+          const raw = dayOrders[orderId];
+          const foundToken = pick(raw, [
+            "trackingToken", "trackToken", "token", "trackingId"
+          ], "");
+
+          if (String(foundToken) === String(trackToken)) {
+            return extractOrder(raw, orderId, dateKey);
+          }
+        }
+      }
+
+      return null;
     }
 
-    function showError(msg){
-      pageError.style.display = 'block';
-      pageError.textContent = msg;
-    }
-
-    function clearError(){
-      pageError.style.display = 'none';
-      pageError.textContent = '';
-    }
-
-    function render(){
-      if (!activeClient) return;
-      clearError();
-      clientValue.textContent = activeClient.name || 'زبون';
-
-      const order = chooseBestOrder(activeClient.id);
-      activeOrder = order;
-
-      if (!order) {
-        statusBadge.className = 'badge reg';
-        statusBadge.textContent = 'لا يوجد طلب حالي';
-        etaValue.textContent = '—';
-        driverValue.textContent = '—';
-        pageSub.textContent = 'لا يوجد طلب نشط أو سابق مرتبط بهذا الرابط حالياً.';
-        nearbyNotice.className = 'notice';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
-        timeline.innerHTML = `
-          <div class="step active">
-            <div class="dot"></div>
-            <div>
-              <div class="ttl">لا يوجد طلب ظاهر حالياً</div>
-              <div class="meta">عند تسجيل طلب جديد لهذا الزبون سيظهر هنا مباشرة من نفس الرابط.</div>
-            </div>
-          </div>`;
-        lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
+    async function loadOrder(trackToken) {
+      if (!trackToken) {
+        showError("لا يوجد رقم تتبع في الرابط.");
         return;
       }
 
-      const etaBag = computeOrderEta(order);
-      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
-      const finalStatus = etaBag.isNearby && order.status === 'registered' ? 'nearby' : order.status;
+      try {
+        const order = await findOrderByToken(trackToken);
 
-      statusBadge.className = statusBadgeClass(finalStatus);
-      statusBadge.textContent = statusLabel(finalStatus);
-      etaValue.textContent = etaBag.etaText || '—';
-      driverValue.textContent = driverName || '—';
+        if (!order) {
+          showError("لم يتم العثور على الطلب. تأكد من صحة رابط التتبع.");
+          return;
+        }
 
-      if (etaBag.isNearby || finalStatus === 'nearby') {
-        nearbyNotice.className = 'notice warn show';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
-      } else if (finalStatus === 'delivered') {
-        nearbyNotice.className = 'notice show';
-        nearbyNotice.textContent = 'تم تسليم الطلب بنجاح.';
-      } else if (finalStatus === 'returned') {
-        nearbyNotice.className = 'notice warn show';
-        nearbyNotice.textContent = 'هذا الطلب مسجل كراجع.';
-      } else {
-        nearbyNotice.className = 'notice';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
+        renderOrder(order);
+        showContent();
+        listenToOrder(order);
+        listenToDriver(order);
+      } catch (err) {
+        console.error(err);
+        showError("حدث خطأ أثناء تحميل الطلب.");
       }
-
-      const orderTime = formatDate(order.createdAt);
-      pageSub.textContent = `رقم الطلب: ${order.id} — آخر حالة محدثة للطلب الحالي.`;
-
-      timeline.innerHTML = `
-        <div class="step active">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">تم تسجيل الطلب</div>
-            <div class="meta">وقت التسجيل: ${escapeHtml(orderTime)}</div>
-          </div>
-        </div>
-        <div class="step ${finalStatus === 'registered' || finalStatus === 'nearby' || finalStatus === 'delivered' || finalStatus === 'returned' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">خرج الطلب مع المندوب</div>
-            <div class="meta">المندوب: ${escapeHtml(driverName || '—')}</div>
-          </div>
-        </div>
-        <div class="step ${finalStatus === 'nearby' || etaBag.isNearby || finalStatus === 'delivered' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">المندوب قريب</div>
-            <div class="meta">${etaBag.isNearby || finalStatus === 'nearby' ? 'المندوب ضمن نطاق الوصول الآن.' : 'سيظهر هذا التنبيه تلقائياً عند اقترابه.'}</div>
-          </div>
-        </div>
-        <div class="step ${finalStatus === 'delivered' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">تم التسليم</div>
-            <div class="meta">${finalStatus === 'delivered' ? `وقت التسليم: ${escapeHtml(formatDate(order.deliveredAt || order.nearbyAt || order.createdAt))}` : 'بانتظار التسليم'}</div>
-          </div>
-        </div>`;
-
-      lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
     }
 
-    function bindData(){
-      db.ref('clients').on('value', snap => {
-        clientsCache = snap.val() || {};
-        const token = getToken();
-        const match = Object.entries(clientsCache).find(([_, c]) => c && String(c.trackingToken || '').trim() === token);
-        if (!token) {
-          showError('رابط التتبع غير مكتمل.');
-          pageSub.textContent = 'هذا الرابط لا يحتوي على رمز تتبع.';
+    function renderOrder(order, driverLoc = null) {
+      els.customerName.textContent = safe(order.customerName);
+      els.orderNumber.textContent = safe(order.orderNumber);
+      els.driverName.textContent = safe(order.driverName);
+      els.addressText.textContent = safe(order.address);
+      els.updatedAtText.textContent = formatDate(order.updatedAt);
+
+      setStatusUi(order.status);
+
+      const driverLat = driverLoc ? num(pick(driverLoc, ["lat", "latitude"])) : null;
+      const driverLng = driverLoc ? num(pick(driverLoc, ["lng", "longitude"])) : null;
+
+      els.etaText.textContent = estimateEtaText(
+        driverLat,
+        driverLng,
+        order.customerLat,
+        order.customerLng,
+        order.status
+      );
+
+      els.orderTitle.textContent =
+        order.status === "delivered"
+          ? "تم إكمال الطلب بنجاح"
+          : order.status === "onway"
+          ? "المندوب في الطريق إليك"
+          : order.status === "preparing"
+          ? "طلبكم قيد التجهيز"
+          : "تم استلام الطلب بالنظام";
+
+      els.orderSub.textContent =
+        order.status === "delivered"
+          ? "شكراً لتعاملكم معنا."
+          : "يمكنك متابعة حالة الطلب وموقع المندوب التقريبي من هذه الصفحة.";
+
+      drawMap(order.customerLat, order.customerLng, driverLat, driverLng);
+    }
+
+    function listenToOrder(order) {
+      const orderPath = `ordersByDate/${order.dateKey}/${order.orderId}`;
+      const orderRef = ref(db, orderPath);
+
+      if (activeOrderUnsub) activeOrderUnsub();
+
+      const callback = (snap) => {
+        if (!snap.exists()) return;
+        const updatedOrder = extractOrder(snap.val(), order.orderId, order.dateKey);
+        renderOrder(updatedOrder);
+      };
+
+      onValue(orderRef, callback);
+      activeOrderUnsub = () => off(orderRef, "value", callback);
+    }
+
+    async function listenToDriver(order) {
+      if (!order.driverId) return;
+
+      const path = await findWorkingDriverPath(order.driverId);
+      if (!path) return;
+
+      const driverRef = ref(db, path);
+      activeDriverRef = driverRef;
+
+      onValue(driverRef, (snap) => {
+        if (!snap.exists()) {
+          renderOrder(order, null);
           return;
         }
-        if (!match) {
-          activeClient = null;
-          clientValue.textContent = '—';
-          driverValue.textContent = '—';
-          etaValue.textContent = '—';
-          statusBadge.className = 'badge ret';
-          statusBadge.textContent = 'الرابط غير معروف';
-          pageSub.textContent = 'تعذر العثور على زبون مرتبط بهذا الرابط.';
-          showError('هذا الرابط غير موجود أو لم يتم تفعيله بعد.');
-          timeline.innerHTML = '';
-          return;
-        }
-        activeClient = { id: match[0], ...(match[1] || {}) };
-        render();
-      });
-
-      db.ref('orders').on('value', snap => {
-        ordersRootCache = snap.val() || {};
-        render();
-      });
-
-      db.ref('driversMeta').on('value', snap => {
-        driversMetaCache = snap.val() || {};
-        render();
-      });
-
-      db.ref('driversLocations').on('value', snap => {
-        driversLocationsCache = snap.val() || {};
-        render();
+        renderOrder(order, snap.val());
       });
     }
 
-    bindData();
+    loadOrder(token);
   </script>
 </body>
 </html>
