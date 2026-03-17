@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>متابعة الطلب - Diqa Maps</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --card:#111827;
+      --card-2:#172033;
+      --line:#263244;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --green:#22c55e;
+      --amber:#f59e0b;
+      --blue:#38bdf8;
+      --red:#ef4444;
+      --white:#fff;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Tahoma,Arial,sans-serif;
+      background:linear-gradient(180deg,#08101f 0%, #0f172a 100%);
+      color:var(--text);
+      min-height:100vh;
+    }
+    .wrap{
+      max-width:760px;
+      margin:0 auto;
+      padding:18px;
+    }
+    .hero{
+      background:linear-gradient(135deg,#111827 0%,#162033 100%);
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:22px;
+      box-shadow:0 12px 30px rgba(0,0,0,.25);
+    }
+    .brand{font-size:14px;color:var(--blue);margin-bottom:10px}
+    h1{margin:0 0 8px;font-size:28px}
+    .sub{color:var(--muted);font-size:14px;line-height:1.8}
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:14px;
+      margin-top:16px;
+    }
+    .card{
+      background:rgba(17,24,39,.94);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 8px 24px rgba(0,0,0,.18);
+    }
+    .label{font-size:12px;color:var(--muted);margin-bottom:8px}
+    .value{font-size:24px;font-weight:700}
+    .value.sm{font-size:20px}
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      border-radius:999px;
+      padding:10px 14px;
+      font-weight:700;
+      font-size:14px;
+    }
+    .badge.reg{background:rgba(56,189,248,.15);color:#7dd3fc;border:1px solid rgba(56,189,248,.35)}
+    .badge.near{background:rgba(245,158,11,.14);color:#fbbf24;border:1px solid rgba(245,158,11,.35)}
+    .badge.done{background:rgba(34,197,94,.14);color:#86efac;border:1px solid rgba(34,197,94,.35)}
+    .badge.ret{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.35)}
+    .timeline{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+    .step{
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+      background:var(--card-2);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px 14px;
+    }
+    .dot{
+      width:13px;height:13px;border-radius:50%;margin-top:5px;background:#475569;flex:0 0 auto;
+      box-shadow:0 0 0 4px rgba(71,85,105,.18);
+    }
+    .step.active .dot{background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.2)}
+    .step .ttl{font-weight:700;margin-bottom:4px}
+    .step .meta{font-size:13px;color:var(--muted);line-height:1.7}
+    .notice{
+      margin-top:16px;
+      border-radius:16px;
+      padding:14px 16px;
+      background:rgba(34,197,94,.12);
+      border:1px solid rgba(34,197,94,.3);
+      color:#bbf7d0;
+      font-weight:700;
+      display:none;
+    }
+    .notice.warn{
+      display:block;
+      background:rgba(245,158,11,.12);
+      border-color:rgba(245,158,11,.32);
+      color:#fde68a;
+    }
+    .notice.show{display:block}
+    .muted{color:var(--muted)}
+    .center{text-align:center}
+    .error{
+      background:rgba(239,68,68,.12);
+      border:1px solid rgba(239,68,68,.35);
+      color:#fecaca;
+      border-radius:16px;
+      padding:14px 16px;
+      margin-top:16px;
+      display:none;
+    }
+    .footer{
+      margin-top:14px;
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="brand">Diqa Maps</div>
+      <h1>متابعة الطلب</h1>
+      <div class="sub" id="page-sub">جاري تحميل حالة الطلب الحالية…</div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">حالة الطلب</div>
+          <div id="status-badge" class="badge reg">جاري التحميل…</div>
+        </div>
+        <div class="card">
+          <div class="label">الوقت المتبقي</div>
+          <div id="eta-value" class="value">—</div>
+        </div>
+        <div class="card">
+          <div class="label">المندوب</div>
+          <div id="driver-value" class="value sm">—</div>
+        </div>
+        <div class="card">
+          <div class="label">الزبون</div>
+          <div id="client-value" class="value sm">—</div>
+        </div>
+      </div>
+
+      <div id="nearby-notice" class="notice">المندوب قريب منك الآن.</div>
+      <div id="page-error" class="error"></div>
+
+      <div class="timeline" id="timeline"></div>
+      <div class="footer" id="last-updated">—</div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDWuD_6q44CXwGiexOyntJJMcF4wmYdaIo",
+      authDomain: "diqa-maps.firebaseapp.com",
+      databaseURL: "https://diqa-maps-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "diqa-maps",
+      storageBucket: "diqa-maps.appspot.com",
+      messagingSenderId: "385120206470",
+      appId: "1:385120206470:web:75bc5f0affa577f5109b07"
+    };
+
+    try { firebase.initializeApp(firebaseConfig); } catch(_) {}
+    const db = firebase.database();
+
+    const DELIVERY_ALLOWED_METERS = 250;
+    const ETA_FALLBACK_SPEED_KMH = 32;
+    const ETA_MIN_MOVING_SPEED_KMH = 3;
+
+    const statusBadge = document.getElementById('status-badge');
+    const etaValue = document.getElementById('eta-value');
+    const driverValue = document.getElementById('driver-value');
+    const clientValue = document.getElementById('client-value');
+    const pageSub = document.getElementById('page-sub');
+    const pageError = document.getElementById('page-error');
+    const timeline = document.getElementById('timeline');
+    const nearbyNotice = document.getElementById('nearby-notice');
+    const lastUpdated = document.getElementById('last-updated');
+
+    let clientsCache = {};
+    let ordersRootCache = {};
+    let driversMetaCache = {};
+    let driversLocationsCache = {};
+    let activeClient = null;
+    let activeOrder = null;
+
+    function getToken(){
+      const url = new URL(window.location.href);
+      return String(url.searchParams.get('t') || '').trim();
+    }
+
+    function escapeHtml(str){
+      return String(str || '')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#039;');
+    }
+
+    function tsToMs(ts) {
+      if (ts == null) return 0;
+      if (typeof ts === 'object' && typeof ts.toMillis === 'function') return ts.toMillis();
+      if (typeof ts === 'string') {
+        const t = Date.parse(ts);
+        return Number.isFinite(t) ? t : 0;
+      }
+      const n = Number(ts);
+      if (!Number.isFinite(n)) return 0;
+      return n < 1e12 ? n * 1000 : n;
+    }
+
+    function haversineMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = a => a * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function normalizePreferredMotoSpeed(speedKmh){
+      const n = Number(speedKmh);
+      if (!Number.isFinite(n) || n < 0) return null;
+      if (n <= ETA_MIN_MOVING_SPEED_KMH) return 0;
+      if (n > 95) return null;
+      return Math.round(n * 10) / 10;
+    }
+
+    function getPreferredDriverSpeedKmh(src){
+      const bag = src || {};
+      const a = normalizePreferredMotoSpeed(bag.traccarSpeedKmh);
+      if (Number.isFinite(a) && a >= ETA_MIN_MOVING_SPEED_KMH) return a;
+      const b = normalizePreferredMotoSpeed(bag.computedSpeedKmh);
+      if (Number.isFinite(b) && b >= ETA_MIN_MOVING_SPEED_KMH) return b;
+      const c = normalizePreferredMotoSpeed(bag.speedKmh);
+      if (Number.isFinite(c) && c >= ETA_MIN_MOVING_SPEED_KMH) return c;
+      return ETA_FALLBACK_SPEED_KMH;
+    }
+
+    function calcEtaMinutes(distanceM, speedKmh){
+      const d = Number(distanceM);
+      if (!Number.isFinite(d) || d < 0) return null;
+      const usedSpeed = (Number.isFinite(Number(speedKmh)) && Number(speedKmh) > ETA_MIN_MOVING_SPEED_KMH)
+        ? Number(speedKmh)
+        : ETA_FALLBACK_SPEED_KMH;
+      return Math.max(1, Math.round(((d / 1000) / usedSpeed) * 60));
+    }
+
+    function formatEtaMinutes(mins){
+      const n = Number(mins);
+      if (!Number.isFinite(n) || n <= 0) return '—';
+      if (n < 60) return `${Math.round(n)} دقيقة`;
+      const h = Math.floor(n / 60);
+      const m = Math.round(n % 60);
+      return m ? `${h} ساعة ${m} دقيقة` : `${h} ساعة`;
+    }
+
+    function formatDate(ts){
+      const ms = tsToMs(ts);
+      if (!ms) return '—';
+      return new Date(ms).toLocaleString('ar-IQ');
+    }
+
+    function statusLabel(st){
+      const s = String(st || 'registered');
+      if (s === 'registered') return 'بالطريق إليك';
+      if (s === 'nearby') return 'المندوب قريب منك';
+      if (s === 'delivered') return 'تم التسليم';
+      if (s === 'returned') return 'راجع';
+      return s;
+    }
+
+    function statusBadgeClass(st){
+      const s = String(st || 'registered');
+      if (s === 'nearby') return 'badge near';
+      if (s === 'delivered') return 'badge done';
+      if (s === 'returned') return 'badge ret';
+      return 'badge reg';
+    }
+
+    function flattenOrders(root){
+      const out = [];
+      Object.entries(root || {}).forEach(([dateKey, bucket]) => {
+        if (!bucket || typeof bucket !== 'object') return;
+        Object.entries(bucket).forEach(([id, order]) => {
+          if (!order || typeof order !== 'object') return;
+          out.push({ id, bucketDate: dateKey, ...order });
+        });
+      });
+      return out;
+    }
+
+    function chooseBestOrder(clientId){
+      const all = flattenOrders(ordersRootCache).filter(o => String(o.clientId || '') === String(clientId || ''));
+      if (!all.length) return null;
+
+      const weight = (o) => {
+        const s = String(o.status || 'registered');
+        if (s === 'nearby') return 0;
+        if (s === 'registered') return 1;
+        if (s === 'delivered') return 2;
+        if (s === 'returned') return 3;
+        return 4;
+      };
+
+      all.sort((a,b)=>{
+        const wa = weight(a), wb = weight(b);
+        if (wa !== wb) return wa - wb;
+        const ta = tsToMs(a.createdAt || a.nearbyAt || a.deliveredAt || a.returnedAt || 0);
+        const tb = tsToMs(b.createdAt || b.nearbyAt || b.deliveredAt || b.returnedAt || 0);
+        return tb - ta;
+      });
+      return all[0] || null;
+    }
+
+    function computeOrderEta(order){
+      if (!order) return { etaText:'—', isNearby:false, distanceM:null };
+      if (String(order.status || '') === 'nearby') return { etaText:'قريب جداً', isNearby:true, distanceM:0 };
+      if (String(order.status || '') === 'delivered') return { etaText:'تم التسليم', isNearby:false, distanceM:0 };
+      if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null };
+
+      const loc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
+      if (!loc) return { etaText:'جاري تحديد موقع المندوب', isNearby:false, distanceM:null };
+
+      const lat1 = Number(loc.lat), lng1 = Number(loc.lng), lat2 = Number(order.lat), lng2 = Number(order.lng);
+      if (![lat1,lng1,lat2,lng2].every(Number.isFinite)) {
+        return { etaText:'—', isNearby:false, distanceM:null };
+      }
+
+      const distanceM = haversineMeters(lat1, lng1, lat2, lng2);
+      const isNearby = distanceM <= DELIVERY_ALLOWED_METERS;
+      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM };
+      const speedKmh = getPreferredDriverSpeedKmh(loc);
+      const etaMin = calcEtaMinutes(distanceM, speedKmh);
+      return {
+        etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : '—',
+        isNearby:false,
+        distanceM,
+        etaMin
+      };
+    }
+
+    function driverNameById(id){
+      const meta = driversMetaCache[String(id || '')] || {};
+      return meta.name || id || '—';
+    }
+
+    function showError(msg){
+      pageError.style.display = 'block';
+      pageError.textContent = msg;
+    }
+
+    function clearError(){
+      pageError.style.display = 'none';
+      pageError.textContent = '';
+    }
+
+    function render(){
+      if (!activeClient) return;
+      clearError();
+      clientValue.textContent = activeClient.name || 'زبون';
+
+      const order = chooseBestOrder(activeClient.id);
+      activeOrder = order;
+
+      if (!order) {
+        statusBadge.className = 'badge reg';
+        statusBadge.textContent = 'لا يوجد طلب حالي';
+        etaValue.textContent = '—';
+        driverValue.textContent = '—';
+        pageSub.textContent = 'لا يوجد طلب نشط أو سابق مرتبط بهذا الرابط حالياً.';
+        nearbyNotice.className = 'notice';
+        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
+        timeline.innerHTML = `
+          <div class="step active">
+            <div class="dot"></div>
+            <div>
+              <div class="ttl">لا يوجد طلب ظاهر حالياً</div>
+              <div class="meta">عند تسجيل طلب جديد لهذا الزبون سيظهر هنا مباشرة من نفس الرابط.</div>
+            </div>
+          </div>`;
+        lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
+        return;
+      }
+
+      const etaBag = computeOrderEta(order);
+      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
+      const finalStatus = etaBag.isNearby && order.status === 'registered' ? 'nearby' : order.status;
+
+      statusBadge.className = statusBadgeClass(finalStatus);
+      statusBadge.textContent = statusLabel(finalStatus);
+      etaValue.textContent = etaBag.etaText || '—';
+      driverValue.textContent = driverName || '—';
+
+      if (etaBag.isNearby || finalStatus === 'nearby') {
+        nearbyNotice.className = 'notice warn show';
+        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
+      } else if (finalStatus === 'delivered') {
+        nearbyNotice.className = 'notice show';
+        nearbyNotice.textContent = 'تم تسليم الطلب بنجاح.';
+      } else if (finalStatus === 'returned') {
+        nearbyNotice.className = 'notice warn show';
+        nearbyNotice.textContent = 'هذا الطلب مسجل كراجع.';
+      } else {
+        nearbyNotice.className = 'notice';
+        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
+      }
+
+      const orderTime = formatDate(order.createdAt);
+      pageSub.textContent = `رقم الطلب: ${order.id} — آخر حالة محدثة للطلب الحالي.`;
+
+      timeline.innerHTML = `
+        <div class="step active">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">تم تسجيل الطلب</div>
+            <div class="meta">وقت التسجيل: ${escapeHtml(orderTime)}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'registered' || finalStatus === 'nearby' || finalStatus === 'delivered' || finalStatus === 'returned' ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">خرج الطلب مع المندوب</div>
+            <div class="meta">المندوب: ${escapeHtml(driverName || '—')}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'nearby' || etaBag.isNearby || finalStatus === 'delivered' ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">المندوب قريب</div>
+            <div class="meta">${etaBag.isNearby || finalStatus === 'nearby' ? 'المندوب ضمن نطاق الوصول الآن.' : 'سيظهر هذا التنبيه تلقائياً عند اقترابه.'}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'delivered' ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">تم التسليم</div>
+            <div class="meta">${finalStatus === 'delivered' ? `وقت التسليم: ${escapeHtml(formatDate(order.deliveredAt || order.nearbyAt || order.createdAt))}` : 'بانتظار التسليم'}</div>
+          </div>
+        </div>`;
+
+      lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
+    }
+
+    function bindData(){
+      db.ref('clients').on('value', snap => {
+        clientsCache = snap.val() || {};
+        const token = getToken();
+        const match = Object.entries(clientsCache).find(([_, c]) => c && String(c.trackingToken || '').trim() === token);
+        if (!token) {
+          showError('رابط التتبع غير مكتمل.');
+          pageSub.textContent = 'هذا الرابط لا يحتوي على رمز تتبع.';
+          return;
+        }
+        if (!match) {
+          activeClient = null;
+          clientValue.textContent = '—';
+          driverValue.textContent = '—';
+          etaValue.textContent = '—';
+          statusBadge.className = 'badge ret';
+          statusBadge.textContent = 'الرابط غير معروف';
+          pageSub.textContent = 'تعذر العثور على زبون مرتبط بهذا الرابط.';
+          showError('هذا الرابط غير موجود أو لم يتم تفعيله بعد.');
+          timeline.innerHTML = '';
+          return;
+        }
+        activeClient = { id: match[0], ...(match[1] || {}) };
+        render();
+      });
+
+      db.ref('orders').on('value', snap => {
+        ordersRootCache = snap.val() || {};
+        render();
+      });
+
+      db.ref('driversMeta').on('value', snap => {
+        driversMetaCache = snap.val() || {};
+        render();
+      });
+
+      db.ref('driversLocations').on('value', snap => {
+        driversLocationsCache = snap.val() || {};
+        render();
+      });
+    }
+
+    bindData();
+  </script>
+</body>
+</html>
