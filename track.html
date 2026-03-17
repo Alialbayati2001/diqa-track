@@ -332,11 +332,11 @@
       if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null };
 
       const loc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
-      if (!loc) return { etaText:'سيظهر الوقت المتوقع حالما يتم تحديث موقع المندوب', isNearby:false, distanceM:null };
+      if (!loc) return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null };
 
       const lat1 = Number(loc.lat), lng1 = Number(loc.lng), lat2 = Number(order.lat), lng2 = Number(order.lng);
       if (![lat1,lng1,lat2,lng2].every(Number.isFinite)) {
-        return { etaText:'—', isNearby:false, distanceM:null };
+        return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null };
       }
 
       const distanceM = haversineMeters(lat1, lng1, lat2, lng2);
