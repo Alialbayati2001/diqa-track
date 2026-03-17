@@ -176,6 +176,7 @@
     const DELIVERY_ALLOWED_METERS = 250;
     const ETA_FALLBACK_SPEED_KMH = 32;
     const ETA_MIN_MOVING_SPEED_KMH = 3;
+    const ETA_MAX_REASONABLE_MOTO_SPEED_KMH = 95;
 
     const statusBadge = document.getElementById('status-badge');
     const etaValue = document.getElementById('eta-value');
@@ -234,7 +235,7 @@
       const n = Number(speedKmh);
       if (!Number.isFinite(n) || n < 0) return null;
       if (n <= ETA_MIN_MOVING_SPEED_KMH) return 0;
-      if (n > 95) return null;
+      if (n > ETA_MAX_REASONABLE_MOTO_SPEED_KMH) return null;
       return Math.round(n * 10) / 10;
     }
 
@@ -261,10 +262,20 @@
     function formatEtaMinutes(mins){
       const n = Number(mins);
       if (!Number.isFinite(n) || n <= 0) return '—';
-      if (n < 60) return `${Math.round(n)} دقيقة`;
+      if (n < 60) return `${Math.round(n)} د`;
       const h = Math.floor(n / 60);
       const m = Math.round(n % 60);
-      return m ? `${h} ساعة ${m} دقيقة` : `${h} ساعة`;
+      return m ? `${h} س ${m} د` : `${h} س`;
+    }
+
+    function calcEtaMinutes(distanceM, speedKmh, fallbackSpeedKmh){
+      const d = Number(distanceM);
+      if (!Number.isFinite(d) || d < 0) return null;
+      const fallback = Number.isFinite(Number(fallbackSpeedKmh)) ? Number(fallbackSpeedKmh) : ETA_FALLBACK_SPEED_KMH;
+      const liveSpeed = Number(speedKmh);
+      const usedSpeed = (Number.isFinite(liveSpeed) && liveSpeed > ETA_MIN_MOVING_SPEED_KMH) ? liveSpeed : fallback;
+      if (!Number.isFinite(usedSpeed) || usedSpeed <= 0) return null;
+      return Math.max(1, Math.round(((d / 1000) / usedSpeed) * 60));
     }
 
     function formatDate(ts){
@@ -342,10 +353,11 @@
       const distanceM = haversineMeters(lat1, lng1, lat2, lng2);
       const isNearby = distanceM <= DELIVERY_ALLOWED_METERS;
       if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM };
+
       const speedKmh = getPreferredDriverSpeedKmh(loc);
-      const etaMin = calcEtaMinutes(distanceM, speedKmh);
+      const etaMin = calcEtaMinutes(distanceM, speedKmh, ETA_FALLBACK_SPEED_KMH);
       return {
-        etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : '—',
+        etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : 'حوالي 10-15 دقيقة',
         isNearby:false,
         distanceM,
         etaMin
