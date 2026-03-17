@@ -332,7 +332,7 @@
       if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null };
 
       const loc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
-      if (!loc) return { etaText:'جاري تحديد موقع المندوب', isNearby:false, distanceM:null };
+      if (!loc) return { etaText:'سيظهر الوقت المتوقع حالما يتم تحديث موقع المندوب', isNearby:false, distanceM:null };
 
       const lat1 = Number(loc.lat), lng1 = Number(loc.lng), lat2 = Number(order.lat), lng2 = Number(order.lng);
       if (![lat1,lng1,lat2,lng2].every(Number.isFinite)) {
@@ -391,7 +391,7 @@
               <div class="meta">عند تسجيل طلب جديد لهذا الزبون سيظهر هنا مباشرة من نفس الرابط.</div>
             </div>
           </div>`;
-        lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
+        lastUpdated.textContent = '';
         return;
       }
 
@@ -418,17 +418,9 @@
         nearbyNotice.textContent = 'المندوب قريب منك الآن.';
       }
 
-      const orderTime = formatDate(order.createdAt);
       pageSub.textContent = `رقم الطلب: ${order.id} — آخر حالة محدثة للطلب الحالي.`;
 
       timeline.innerHTML = `
-        <div class="step active">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">تم تسجيل الطلب</div>
-            <div class="meta">وقت التسجيل: ${escapeHtml(orderTime)}</div>
-          </div>
-        </div>
         <div class="step ${finalStatus === 'registered' || finalStatus === 'nearby' || finalStatus === 'delivered' || finalStatus === 'returned' ? 'active' : ''}">
           <div class="dot"></div>
           <div>
@@ -447,11 +439,11 @@
           <div class="dot"></div>
           <div>
             <div class="ttl">تم التسليم</div>
-            <div class="meta">${finalStatus === 'delivered' ? `وقت التسليم: ${escapeHtml(formatDate(order.deliveredAt || order.nearbyAt || order.createdAt))}` : 'بانتظار التسليم'}</div>
+            <div class="meta">${finalStatus === 'delivered' ? 'تم التسليم بنجاح' : 'بانتظار التسليم'}</div>
           </div>
         </div>`;
 
-      lastUpdated.textContent = `آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')}`;
+      lastUpdated.textContent = '';
     }
 
     function bindData(){
