@@ -121,6 +121,19 @@
       color:var(--muted);
       font-size:12px;
     }
+
+    .orders-box{margin-top:18px}
+    .orders-head{font-size:16px;font-weight:800;margin:0 0 10px;color:var(--text)}
+    .orders-list{display:flex;flex-direction:column;gap:12px}
+    .order-card{background:rgba(17,24,39,.96);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.16)}
+    .order-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+    .order-title{font-size:16px;font-weight:800}
+    .order-status{font-size:12px}
+    .order-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+    .order-mini{background:var(--card-2);border:1px solid var(--line);border-radius:14px;padding:10px}
+    .order-mini .k{font-size:11px;color:var(--muted);margin-bottom:6px}
+    .order-mini .v{font-size:16px;font-weight:800;line-height:1.5}
+
   </style>
 </head>
 <body>
@@ -157,6 +170,12 @@
       <div id="page-error" class="error"></div>
 
       <div class="timeline" id="timeline"></div>
+
+      <div class="orders-box">
+        <div class="orders-head">تفاصيل الطلبات</div>
+        <div class="orders-list" id="orders-list"></div>
+      </div>
+
       <div class="footer" id="last-updated">—</div>
     </div>
   </div>
@@ -195,6 +214,7 @@
     const pageSub = document.getElementById('page-sub');
     const pageError = document.getElementById('page-error');
     const timeline = document.getElementById('timeline');
+    const ordersList = document.getElementById('orders-list');
     const nearbyNotice = document.getElementById('nearby-notice');
     const lastUpdated = document.getElementById('last-updated');
 
@@ -505,21 +525,42 @@
       return 0;
     }
 
-    function chooseBestOrder(clientId){
+    function getClientOrders(clientId){
       const list = getAllOrdersFlat().filter(o => String(o.clientId || '') === String(clientId || ''));
-      if (!list.length) return null;
-
       list.sort((a, b) => {
         const ra = getOrderRank(a.status);
         const rb = getOrderRank(b.status);
         if (rb !== ra) return rb - ra;
-
         const ta = tsToMs(a.updatedAt || a.deliveredAt || a.returnedAt || a.nearbyAt || a.createdAt || 0);
         const tb = tsToMs(b.updatedAt || b.deliveredAt || b.returnedAt || b.nearbyAt || b.createdAt || 0);
         return tb - ta;
       });
+      return list;
+    }
 
-      return list[0] || null;
+    function chooseBestOrder(clientId){
+      return getClientOrders(clientId)[0] || null;
+    }
+
+    function chooseDisplayOrders(clientId){
+      const list = getClientOrders(clientId);
+      if (!list.length) return [];
+      const active = list.filter(o => ['registered','nearby'].includes(String(o.status || 'registered')));
+      return active.length ? active : list.slice(0, 5);
+    }
+
+    function statusText(status){
+      const s = String(status || 'registered');
+      if (s === 'nearby') return 'المندوب قريب';
+      if (s === 'delivered') return 'تم التسليم';
+      if (s === 'returned') return 'راجع';
+      return 'الطلب مسجل';
+    }
+
+    function getOrderDisplayName(order, idx){
+      const candidates = [order.orderNo, order.orderNumber, order.invoiceNo, order.invoiceNumber, order.number, order.seq, order.id];
+      const raw = candidates.find(v => v != null && String(v).trim() !== '');
+      return raw ? `طلب ${String(raw).trim()}` : `طلب ${idx + 1}`;
     }
 
     function applyStatusUi(finalStatus){
@@ -572,15 +613,77 @@
         </div>`;
     }
 
+    function buildOrderBadge(status){
+      const s = String(status || 'registered');
+      const cls = s === 'nearby' ? 'near' : (s === 'delivered' ? 'done' : (s === 'returned' ? 'ret' : 'reg'));
+      return `<span class="badge ${cls} order-status">${escapeHtml(statusText(s))}</span>`;
+    }
+
+    async function resolveOrderPresentation(order){
+      const finalStatus = String(order.status || 'registered');
+      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
+      let etaBag = {
+        etaText: String(order.etaText || '—'),
+        etaMin: Number.isFinite(Number(order.etaMinutes)) ? Number(order.etaMinutes) : null,
+        isNearby: finalStatus === 'nearby',
+        distanceM: null,
+        source: (order.etaText || Number.isFinite(Number(order.etaMinutes))) ? 'saved' : 'computed'
+      };
+      const hasManagerEta = (String(order.etaText || '').trim() && String(order.etaText || '').trim() !== '—') || Number.isFinite(Number(order.etaMinutes));
+      if (!hasManagerEta) {
+        try { etaBag = await computeOrderEta(order); } catch (_) {}
+      }
+      const liveLoc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
+      etaBag = smoothEtaBag(order, etaBag, liveLoc);
+      return {
+        order,
+        finalStatus,
+        driverName,
+        invoiceAmount: pickInvoiceAmount(order),
+        etaBag,
+        stamp: tsToMs(order.updatedAt || order.deliveredAt || order.returnedAt || order.nearbyAt || order.createdAt || 0)
+      };
+    }
+
+    function renderOrdersList(presentations){
+      if (!ordersList) return;
+      if (!presentations || !presentations.length) {
+        ordersList.innerHTML = '<div class="muted center">لا توجد طلبات لعرضها حالياً.</div>';
+        return;
+      }
+      ordersList.innerHTML = presentations.map((item, idx) => {
+        const order = item.order || {};
+        const workDate = order.workDate || '—';
+        const amount = item.invoiceAmount != null ? formatMoneyIqd(item.invoiceAmount) : '—';
+        const etaText = item.etaBag && item.etaBag.etaText ? item.etaBag.etaText : '—';
+        const driverText = item.driverName || '—';
+        const updatedText = item.stamp ? formatDate(item.stamp) : '—';
+        return `
+          <div class="order-card">
+            <div class="order-top">
+              <div class="order-title">${escapeHtml(getOrderDisplayName(order, idx))}</div>
+              <div>${buildOrderBadge(item.finalStatus)}</div>
+            </div>
+            <div class="order-grid">
+              <div class="order-mini"><div class="k">المندوب</div><div class="v">${escapeHtml(driverText)}</div></div>
+              <div class="order-mini"><div class="k">الوصول المتوقع</div><div class="v">${escapeHtml(etaText)}</div></div>
+              <div class="order-mini"><div class="k">مبلغ الطلب</div><div class="v">${escapeHtml(amount)}</div></div>
+              <div class="order-mini"><div class="k">تاريخ الطلب</div><div class="v">${escapeHtml(workDate)}</div></div>
+              <div class="order-mini"><div class="k">آخر تحديث</div><div class="v">${escapeHtml(updatedText)}</div></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
     async function render(){
       if (!activeClient) return;
       clearError();
       clientValue.textContent = activeClient.name || 'زبون';
 
-      const order = chooseBestOrder(activeClient.id);
-      activeOrder = order;
+      const displayOrders = chooseDisplayOrders(activeClient.id);
+      activeOrder = displayOrders[0] || chooseBestOrder(activeClient.id) || null;
 
-      if (!order) {
+      if (!displayOrders.length) {
         statusBadge.className = 'badge reg';
         statusBadge.textContent = 'لا يوجد طلب حالي';
         etaValue.textContent = '—';
@@ -590,62 +693,66 @@
         nearbyNotice.className = 'notice';
         nearbyNotice.textContent = 'المندوب قريب منك الآن.';
         timeline.innerHTML = '';
+        if (ordersList) ordersList.innerHTML = '<div class="muted center">لا توجد طلبات لعرضها حالياً.</div>';
         lastUpdated.textContent = '';
         return;
       }
 
-      const finalStatus = String(order.status || 'registered');
-      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
-      driverValue.textContent = driverName || '—';
-      const invoiceAmount = pickInvoiceAmount(order);
-      invoiceValue.textContent = invoiceAmount != null ? formatMoneyIqd(invoiceAmount) : '—';
-      applyStatusUi(finalStatus);
-
-      let etaBag = {
-        etaText: String(order.etaText || '—'),
-        etaMin: Number.isFinite(Number(order.etaMinutes)) ? Number(order.etaMinutes) : null,
-        isNearby: finalStatus === 'nearby',
-        distanceM: null,
-        source: (order.etaText || Number.isFinite(Number(order.etaMinutes))) ? 'saved' : 'computed'
-      };
-
-      const hasManagerEta = (
-        String(order.etaText || '').trim() &&
-        String(order.etaText || '').trim() !== '—'
-      ) || Number.isFinite(Number(order.etaMinutes));
-
-      if (!hasManagerEta) {
-        try {
-          etaBag = await computeOrderEta(order);
-        } catch (_) {}
+      const presentations = [];
+      for (const order of displayOrders) {
+        presentations.push(await resolveOrderPresentation(order));
       }
 
-      const liveLoc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
-      etaBag = smoothEtaBag(order, etaBag, liveLoc);
+      const main = presentations[0];
+      const activeCount = presentations.filter(x => ['registered','nearby'].includes(String(x.finalStatus || 'registered'))).length;
+      const uniqueDrivers = Array.from(new Set(presentations.map(x => String(x.driverName || '').trim()).filter(Boolean)));
+      const totalInvoice = presentations.reduce((sum, x) => sum + (Number.isFinite(Number(x.invoiceAmount)) ? Number(x.invoiceAmount) : 0), 0);
+      const hasAnyInvoice = presentations.some(x => Number.isFinite(Number(x.invoiceAmount)));
+      const anyNearby = presentations.some(x => x.finalStatus === 'nearby' || (x.etaBag && x.etaBag.isNearby));
+      const latestStamp = Math.max(...presentations.map(x => x.stamp || 0), 0);
 
-      etaValue.textContent = etaBag.etaText || '—';
+      if (presentations.length > 1) {
+        statusBadge.className = 'badge reg';
+        statusBadge.textContent = activeCount > 1 ? `${activeCount} طلبات حالية` : `${presentations.length} طلبات`;
+      } else {
+        applyStatusUi(main.finalStatus);
+      }
 
-      if (finalStatus === 'delivered') {
+      etaValue.textContent = presentations.length > 1
+        ? (main.etaBag && main.etaBag.etaText ? `${main.etaBag.etaText} (الأقرب)` : '—')
+        : ((main.etaBag && main.etaBag.etaText) || '—');
+
+      driverValue.textContent = uniqueDrivers.length > 1
+        ? uniqueDrivers.join('، ')
+        : (main.driverName || '—');
+
+      invoiceValue.textContent = hasAnyInvoice
+        ? (presentations.length > 1 ? formatMoneyIqd(totalInvoice) : formatMoneyIqd(main.invoiceAmount))
+        : '—';
+
+      if (presentations.length > 1) {
+        pageSub.textContent = `لديك ${presentations.length} طلبات مرتبطة بهذا الرابط. ستظهر تفاصيل كل طلب مع المندوب ومبلغ الفاتورة ووقت الوصول.`;
+      } else if (main.finalStatus === 'delivered') {
         pageSub.textContent = 'تم تسليم الطلب بنجاح.';
-        nearbyNotice.className = 'notice';
-      } else if (finalStatus === 'returned') {
+      } else if (main.finalStatus === 'returned') {
         pageSub.textContent = 'تم إرجاع الطلب.';
-        nearbyNotice.className = 'notice';
-      } else if (finalStatus === 'nearby' || etaBag.isNearby) {
+      } else if (main.finalStatus === 'nearby' || (main.etaBag && main.etaBag.isNearby)) {
         pageSub.textContent = 'المندوب قريب منك الآن.';
-        nearbyNotice.className = 'notice warn show';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
       } else {
         pageSub.textContent = 'يجري متابعة الطلب حالياً.';
+      }
+
+      if (anyNearby) {
+        nearbyNotice.className = 'notice warn show';
+        nearbyNotice.textContent = presentations.length > 1 ? 'يوجد طلب واحد على الأقل والمندوب قريب منك الآن.' : 'المندوب قريب منك الآن.';
+      } else {
         nearbyNotice.className = 'notice';
       }
 
-      timeline.innerHTML = buildTimeline(finalStatus, driverName, etaBag);
-
-      const stamp = tsToMs(order.updatedAt || order.deliveredAt || order.returnedAt || order.nearbyAt || order.createdAt || 0);
-      lastUpdated.textContent = stamp ? `آخر تحديث: ${formatDate(stamp)}` : '';
+      timeline.innerHTML = buildTimeline(main.finalStatus, main.driverName, main.etaBag);
+      renderOrdersList(presentations);
+      lastUpdated.textContent = latestStamp ? `آخر تحديث: ${formatDate(latestStamp)}` : '';
     }
-
     function bindData(){
       db.ref('clients').on('value', snap => {
         clientsCache = snap.val() || {};
