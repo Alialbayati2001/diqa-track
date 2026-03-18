@@ -178,6 +178,10 @@
     const ETA_MIN_MOVING_SPEED_KMH = 3;
     const ETA_MAX_REASONABLE_MOTO_SPEED_KMH = 95;
     const OSRM_ROUTE_API_BASE = 'https://router.project-osrm.org/route/v1/driving';
+    const ETA_SMOOTH_MAX_JUMP_MIN = 3;
+    const ETA_FREEZE_WHEN_STOPPED_MIN = 2;
+    const ETA_RECALC_EVERY_MS = 60000;
+    const ETA_STORAGE_PREFIX = 'diqa_track_eta_';
 
     const statusBadge = document.getElementById('status-badge');
     const etaValue = document.getElementById('eta-value');
@@ -195,6 +199,7 @@
     let driversLocationsCache = {};
     let activeClient = null;
     let activeOrder = null;
+    let etaMemory = null;
 
     function getToken(){
       const url = new URL(window.location.href);
@@ -274,6 +279,91 @@
       const ms = tsToMs(ts);
       if (!ms) return '—';
       return new Date(ms).toLocaleString('ar-IQ');
+    }
+
+
+    function getEtaStorageKey(order){
+      const token = getToken() || 'no_token';
+      const orderId = String((order && (order.id || order.orderId)) || 'no_order');
+      return `${ETA_STORAGE_PREFIX}${token}_${orderId}`;
+    }
+
+    function loadEtaMemory(order){
+      try {
+        const raw = localStorage.getItem(getEtaStorageKey(order));
+        etaMemory = raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        etaMemory = null;
+      }
+      return etaMemory;
+    }
+
+    function saveEtaMemory(order, bag){
+      if (!order || !bag) return;
+      etaMemory = {
+        etaText: bag.etaText || '—',
+        etaMin: Number.isFinite(Number(bag.etaMin)) ? Number(bag.etaMin) : null,
+        isNearby: !!bag.isNearby,
+        source: bag.source || 'computed',
+        distanceM: Number.isFinite(Number(bag.distanceM)) ? Number(bag.distanceM) : null,
+        computedAt: Date.now()
+      };
+      try {
+        localStorage.setItem(getEtaStorageKey(order), JSON.stringify(etaMemory));
+      } catch (_) {}
+    }
+
+    function smoothEtaBag(order, freshBag, liveLoc){
+      if (!freshBag) return freshBag;
+      const now = Date.now();
+      const old = loadEtaMemory(order);
+      const currentMin = Number.isFinite(Number(freshBag.etaMin)) ? Number(freshBag.etaMin) : null;
+      const oldMin = old && Number.isFinite(Number(old.etaMin)) ? Number(old.etaMin) : null;
+      const liveSpeed = normalizePreferredMotoSpeed(liveLoc && (liveLoc.traccarSpeedKmh ?? liveLoc.computedSpeedKmh ?? liveLoc.speedKmh));
+      const stopped = Number.isFinite(liveSpeed) && liveSpeed <= ETA_MIN_MOVING_SPEED_KMH;
+
+      let result = { ...freshBag };
+
+      if (old && (now - Number(old.computedAt || 0) < ETA_RECALC_EVERY_MS) && old.etaText && old.etaText !== '—') {
+        result = { ...result, ...old, source: old.source || result.source || 'smoothed' };
+      }
+
+      if (Number.isFinite(currentMin) && Number.isFinite(oldMin)) {
+        let nextMin = currentMin;
+
+        if (stopped && currentMin > oldMin) {
+          nextMin = oldMin;
+        }
+
+        if (Math.abs(currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
+          nextMin = currentMin > oldMin ? oldMin + ETA_SMOOTH_MAX_JUMP_MIN : oldMin - ETA_SMOOTH_MAX_JUMP_MIN;
+        }
+
+        if (stopped) {
+          nextMin = Math.min(nextMin, oldMin + ETA_FREEZE_WHEN_STOPPED_MIN);
+        }
+
+        nextMin = Math.max(1, Math.round(nextMin));
+        result.etaMin = nextMin;
+        result.etaText = formatEtaMinutes(nextMin);
+        result.source = 'smoothed';
+      }
+
+      if (result.isNearby || String(order.status || '') === 'nearby') {
+        result.etaMin = 0;
+        result.etaText = 'قريب جداً';
+      }
+      if (String(order.status || '') === 'delivered') {
+        result.etaMin = 0;
+        result.etaText = 'تم التسليم';
+      }
+      if (String(order.status || '') === 'returned') {
+        result.etaMin = null;
+        result.etaText = 'تم إرجاع الطلب';
+      }
+
+      saveEtaMemory(order, result);
+      return result;
     }
 
     async function fetchOsrmRouteInfo(originLat, originLng, destLat, destLng){
@@ -495,6 +585,9 @@
           etaBag = await computeOrderEta(order);
         } catch (_) {}
       }
+
+      const liveLoc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
+      etaBag = smoothEtaBag(order, etaBag, liveLoc);
 
       etaValue.textContent = etaBag.etaText || '—';
 
