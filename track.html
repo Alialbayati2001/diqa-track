@@ -147,6 +147,10 @@
           <div class="label">الزبون</div>
           <div id="client-value" class="value sm">—</div>
         </div>
+        <div class="card">
+          <div class="label">مبلغ الفاتورة</div>
+          <div id="invoice-value" class="value sm">—</div>
+        </div>
       </div>
 
       <div id="nearby-notice" class="notice">المندوب قريب منك الآن.</div>
@@ -187,6 +191,7 @@
     const etaValue = document.getElementById('eta-value');
     const driverValue = document.getElementById('driver-value');
     const clientValue = document.getElementById('client-value');
+    const invoiceValue = document.getElementById('invoice-value');
     const pageSub = document.getElementById('page-sub');
     const pageError = document.getElementById('page-error');
     const timeline = document.getElementById('timeline');
@@ -273,6 +278,32 @@
       const h = Math.floor(n / 60);
       const m = Math.round(n % 60);
       return m ? `${h} س ${m} د` : `${h} س`;
+    }
+
+    function formatMoneyIqd(value){
+      const n = Number(String(value ?? '').replace(/[^\d.\-]/g,''));
+      if (!Number.isFinite(n)) return '—';
+      try {
+        return new Intl.NumberFormat('ar-IQ').format(n) + ' د.ع';
+      } catch (_) {
+        return Math.round(n) + ' د.ع';
+      }
+    }
+
+    function pickInvoiceAmount(order){
+      if (!order || typeof order !== 'object') return null;
+      const keys = [
+        'invoiceAmount','invoiceTotal','totalAmount','totalPrice','grandTotal',
+        'amount','price','finalPrice','orderTotal','billAmount','billTotal','total'
+      ];
+      for (const k of keys){
+        const v = order[k];
+        if (v != null && String(v).trim() !== ''){
+          const n = Number(String(v).replace(/[^\d.\-]/g,''));
+          if (Number.isFinite(n)) return n;
+        }
+      }
+      return null;
     }
 
     function formatDate(ts){
@@ -554,6 +585,7 @@
         statusBadge.textContent = 'لا يوجد طلب حالي';
         etaValue.textContent = '—';
         driverValue.textContent = '—';
+        invoiceValue.textContent = '—';
         pageSub.textContent = 'لا يوجد طلب حالي أو سابق مرتبط بهذا الزبون.';
         nearbyNotice.className = 'notice';
         nearbyNotice.textContent = 'المندوب قريب منك الآن.';
@@ -565,6 +597,8 @@
       const finalStatus = String(order.status || 'registered');
       const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
       driverValue.textContent = driverName || '—';
+      const invoiceAmount = pickInvoiceAmount(order);
+      invoiceValue.textContent = invoiceAmount != null ? formatMoneyIqd(invoiceAmount) : '—';
       applyStatusUi(finalStatus);
 
       let etaBag = {
@@ -627,6 +661,7 @@
           clientValue.textContent = '—';
           driverValue.textContent = '—';
           etaValue.textContent = '—';
+          invoiceValue.textContent = '—';
           statusBadge.className = 'badge ret';
           statusBadge.textContent = 'الرابط غير معروف';
           pageSub.textContent = 'تعذر العثور على زبون مرتبط بهذا الرابط.';
