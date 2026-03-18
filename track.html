@@ -313,8 +313,9 @@
     function pickInvoiceAmount(order){
       if (!order || typeof order !== 'object') return null;
       const keys = [
-        'invoiceAmount','invoiceTotal','totalAmount','totalPrice','grandTotal',
-        'amount','price','finalPrice','orderTotal','billAmount','billTotal','total'
+        'adminInvoiceAmount','invoiceAmount','invoiceTotal','totalAmount','totalPrice','grandTotal',
+        'amount','price','finalPrice','orderTotal','billAmount','billTotal','total',
+        'priceAfterDiscount','finalAmount','finalAmountIQD','deliveredCash'
       ];
       for (const k of keys){
         const v = order[k];
