@@ -352,6 +352,105 @@
       pageError.textContent = '';
     }
 
+    function getAllOrdersFlat(){
+      const out = [];
+      const root = ordersRootCache || {};
+      Object.entries(root).forEach(([key, val]) => {
+        if (!val || typeof val !== 'object') return;
+
+        const looksLikeSingleOrder = (
+          val.clientId != null || val.clientName != null || val.assignedDriverId != null || val.status != null
+        );
+
+        if (looksLikeSingleOrder) {
+          out.push({ id: key, ...(val || {}) });
+          return;
+        }
+
+        Object.entries(val).forEach(([orderId, orderVal]) => {
+          if (!orderVal || typeof orderVal !== 'object') return;
+          out.push({ id: orderId, ...(orderVal || {}), workDate: orderVal.workDate || key });
+        });
+      });
+      return out;
+    }
+
+    function getOrderRank(status){
+      const s = String(status || '').trim();
+      if (s === 'nearby') return 4;
+      if (s === 'registered') return 3;
+      if (s === 'delivered') return 2;
+      if (s === 'returned') return 1;
+      return 0;
+    }
+
+    function chooseBestOrder(clientId){
+      const list = getAllOrdersFlat().filter(o => String(o.clientId || '') === String(clientId || ''));
+      if (!list.length) return null;
+
+      list.sort((a, b) => {
+        const ra = getOrderRank(a.status);
+        const rb = getOrderRank(b.status);
+        if (rb !== ra) return rb - ra;
+
+        const ta = tsToMs(a.updatedAt || a.deliveredAt || a.returnedAt || a.nearbyAt || a.createdAt || 0);
+        const tb = tsToMs(b.updatedAt || b.deliveredAt || b.returnedAt || b.nearbyAt || b.createdAt || 0);
+        return tb - ta;
+      });
+
+      return list[0] || null;
+    }
+
+    function applyStatusUi(finalStatus){
+      const s = String(finalStatus || 'registered');
+      if (s === 'nearby') {
+        statusBadge.className = 'badge near';
+        statusBadge.textContent = 'المندوب قريب';
+      } else if (s === 'delivered') {
+        statusBadge.className = 'badge done';
+        statusBadge.textContent = 'تم التسليم';
+      } else if (s === 'returned') {
+        statusBadge.className = 'badge ret';
+        statusBadge.textContent = 'راجع';
+      } else {
+        statusBadge.className = 'badge reg';
+        statusBadge.textContent = 'الطلب مسجل';
+      }
+    }
+
+    function buildTimeline(finalStatus, driverName, etaBag){
+      const isNearby = !!(etaBag && etaBag.isNearby);
+      return `
+        <div class="step ${['registered','nearby','delivered','returned'].includes(finalStatus) ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">خرج الطلب مع المندوب</div>
+            <div class="meta">المندوب: ${escapeHtml(driverName || '—')}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'nearby' || finalStatus === 'delivered' || isNearby ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">المندوب قريب</div>
+            <div class="meta">${finalStatus === 'nearby' || isNearby ? 'المندوب ضمن نطاق الوصول الآن.' : 'سيظهر هذا التنبيه تلقائياً عند اقترابه.'}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'delivered' ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">تم التسليم</div>
+            <div class="meta">${finalStatus === 'delivered' ? 'تم التسليم بنجاح' : 'بانتظار التسليم'}</div>
+          </div>
+        </div>
+        <div class="step ${finalStatus === 'returned' ? 'active' : ''}">
+          <div class="dot"></div>
+          <div>
+            <div class="ttl">الطلب راجع</div>
+            <div class="meta">${finalStatus === 'returned' ? 'تم إرجاع الطلب' : 'لا يوجد إرجاع مسجل'}</div>
+          </div>
+        </div>`;
+    }
+
     async function render(){
       if (!activeClient) return;
       clearError();
@@ -365,33 +464,59 @@
         statusBadge.textContent = 'لا يوجد طلب حالي';
         etaValue.textContent = '—';
         driverValue.textContent = '—';
-        pageSub.textContent = 'لا يوجد طلب نشط أو سابق مرتبط بهذا الرابط حالياً.';
+        pageSub.textContent = 'لا يوجد طلب حالي أو سابق مرتبط بهذا الزبون.';
         nearbyNotice.className = 'notice';
         nearbyNotice.textContent = 'المندوب قريب منك الآن.';
-        timeline.innerHTML = `
-        <div class="step ${finalStatus === 'registered' || finalStatus === 'nearby' || finalStatus === 'delivered' || finalStatus === 'returned' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">خرج الطلب مع المندوب</div>
-            <div class="meta">المندوب: ${escapeHtml(driverName || '—')}</div>
-          </div>
-        </div>
-        <div class="step ${finalStatus === 'nearby' || etaBag.isNearby || finalStatus === 'delivered' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">المندوب قريب</div>
-            <div class="meta">${etaBag.isNearby || finalStatus === 'nearby' ? 'المندوب ضمن نطاق الوصول الآن.' : 'سيظهر هذا التنبيه تلقائياً عند اقترابه.'}</div>
-          </div>
-        </div>
-        <div class="step ${finalStatus === 'delivered' ? 'active' : ''}">
-          <div class="dot"></div>
-          <div>
-            <div class="ttl">تم التسليم</div>
-            <div class="meta">${finalStatus === 'delivered' ? 'تم التسليم بنجاح' : 'بانتظار التسليم'}</div>
-          </div>
-        </div>`;
+        timeline.innerHTML = '';
+        lastUpdated.textContent = '';
+        return;
+      }
 
-      lastUpdated.textContent = '';
+      const finalStatus = String(order.status || 'registered');
+      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
+      driverValue.textContent = driverName || '—';
+      applyStatusUi(finalStatus);
+
+      let etaBag = {
+        etaText: String(order.etaText || '—'),
+        etaMin: Number.isFinite(Number(order.etaMinutes)) ? Number(order.etaMinutes) : null,
+        isNearby: finalStatus === 'nearby',
+        distanceM: null,
+        source: (order.etaText || Number.isFinite(Number(order.etaMinutes))) ? 'saved' : 'computed'
+      };
+
+      const hasManagerEta = (
+        String(order.etaText || '').trim() &&
+        String(order.etaText || '').trim() !== '—'
+      ) || Number.isFinite(Number(order.etaMinutes));
+
+      if (!hasManagerEta) {
+        try {
+          etaBag = await computeOrderEta(order);
+        } catch (_) {}
+      }
+
+      etaValue.textContent = etaBag.etaText || '—';
+
+      if (finalStatus === 'delivered') {
+        pageSub.textContent = 'تم تسليم الطلب بنجاح.';
+        nearbyNotice.className = 'notice';
+      } else if (finalStatus === 'returned') {
+        pageSub.textContent = 'تم إرجاع الطلب.';
+        nearbyNotice.className = 'notice';
+      } else if (finalStatus === 'nearby' || etaBag.isNearby) {
+        pageSub.textContent = 'المندوب قريب منك الآن.';
+        nearbyNotice.className = 'notice warn show';
+        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
+      } else {
+        pageSub.textContent = 'يجري متابعة الطلب حالياً.';
+        nearbyNotice.className = 'notice';
+      }
+
+      timeline.innerHTML = buildTimeline(finalStatus, driverName, etaBag);
+
+      const stamp = tsToMs(order.updatedAt || order.deliveredAt || order.returnedAt || order.nearbyAt || order.createdAt || 0);
+      lastUpdated.textContent = stamp ? `آخر تحديث: ${formatDate(stamp)}` : '';
     }
 
     function bindData(){
