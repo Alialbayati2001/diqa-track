@@ -128,7 +128,7 @@
     <div class="hero">
       <div class="brand">Diqa Maps</div>
       <h1>متابعة الطلب</h1>
-      <div class="sub" id="page-sub">جاري تحميل حالة الطلب الحالية…</div>
+      <div class="sub" id="page-sub">جاري تحميل حالة الطلب الحالية...</div>
 
       <div class="grid">
         <div class="card">
@@ -177,6 +177,7 @@
     const ETA_FALLBACK_SPEED_KMH = 32;
     const ETA_MIN_MOVING_SPEED_KMH = 3;
     const ETA_MAX_REASONABLE_MOTO_SPEED_KMH = 95;
+    const OSRM_ROUTE_API_BASE = 'https://router.project-osrm.org/route/v1/driving';
 
     const statusBadge = document.getElementById('status-badge');
     const etaValue = document.getElementById('eta-value');
@@ -250,12 +251,13 @@
       return ETA_FALLBACK_SPEED_KMH;
     }
 
-    function calcEtaMinutes(distanceM, speedKmh){
+    function calcEtaMinutes(distanceM, speedKmh, fallbackSpeedKmh){
       const d = Number(distanceM);
       if (!Number.isFinite(d) || d < 0) return null;
-      const usedSpeed = (Number.isFinite(Number(speedKmh)) && Number(speedKmh) > ETA_MIN_MOVING_SPEED_KMH)
-        ? Number(speedKmh)
-        : ETA_FALLBACK_SPEED_KMH;
+      const fallback = Number.isFinite(Number(fallbackSpeedKmh)) ? Number(fallbackSpeedKmh) : ETA_FALLBACK_SPEED_KMH;
+      const liveSpeed = Number(speedKmh);
+      const usedSpeed = (Number.isFinite(liveSpeed) && liveSpeed > ETA_MIN_MOVING_SPEED_KMH) ? liveSpeed : fallback;
+      if (!Number.isFinite(usedSpeed) || usedSpeed <= 0) return null;
       return Math.max(1, Math.round(((d / 1000) / usedSpeed) * 60));
     }
 
@@ -268,75 +270,33 @@
       return m ? `${h} س ${m} د` : `${h} س`;
     }
 
-    function calcEtaMinutes(distanceM, speedKmh, fallbackSpeedKmh){
-      const d = Number(distanceM);
-      if (!Number.isFinite(d) || d < 0) return null;
-      const fallback = Number.isFinite(Number(fallbackSpeedKmh)) ? Number(fallbackSpeedKmh) : ETA_FALLBACK_SPEED_KMH;
-      const liveSpeed = Number(speedKmh);
-      const usedSpeed = (Number.isFinite(liveSpeed) && liveSpeed > ETA_MIN_MOVING_SPEED_KMH) ? liveSpeed : fallback;
-      if (!Number.isFinite(usedSpeed) || usedSpeed <= 0) return null;
-      return Math.max(1, Math.round(((d / 1000) / usedSpeed) * 60));
-    }
-
     function formatDate(ts){
       const ms = tsToMs(ts);
       if (!ms) return '—';
       return new Date(ms).toLocaleString('ar-IQ');
     }
 
-    function statusLabel(st){
-      const s = String(st || 'registered');
-      if (s === 'registered') return 'بالطريق إليك';
-      if (s === 'nearby') return 'المندوب قريب منك';
-      if (s === 'delivered') return 'تم التسليم';
-      if (s === 'returned') return 'راجع';
-      return s;
-    }
+    async function fetchOsrmRouteInfo(originLat, originLng, destLat, destLng){
+      const url = `${OSRM_ROUTE_API_BASE}/${Number(originLng)},${Number(originLat)};${Number(destLng)},${Number(destLat)}?overview=false&alternatives=false&steps=false&annotations=false`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('osrm route failed: ' + res.status);
+      const json = await res.json();
+      const route = json && Array.isArray(json.routes) ? json.routes[0] : null;
+      if (!route) return null;
 
-    function statusBadgeClass(st){
-      const s = String(st || 'registered');
-      if (s === 'nearby') return 'badge near';
-      if (s === 'delivered') return 'badge done';
-      if (s === 'returned') return 'badge ret';
-      return 'badge reg';
-    }
+      const distanceM = Number(route.distance);
+      const durationSec = Number(route.duration);
+      const etaMin = Number.isFinite(durationSec) ? Math.max(1, Math.round(durationSec / 60)) : null;
 
-    function flattenOrders(root){
-      const out = [];
-      Object.entries(root || {}).forEach(([dateKey, bucket]) => {
-        if (!bucket || typeof bucket !== 'object') return;
-        Object.entries(bucket).forEach(([id, order]) => {
-          if (!order || typeof order !== 'object') return;
-          out.push({ id, bucketDate: dateKey, ...order });
-        });
-      });
-      return out;
-    }
-
-    function chooseBestOrder(clientId){
-      const all = flattenOrders(ordersRootCache).filter(o => String(o.clientId || '') === String(clientId || ''));
-      if (!all.length) return null;
-
-      const weight = (o) => {
-        const s = String(o.status || 'registered');
-        if (s === 'nearby') return 0;
-        if (s === 'registered') return 1;
-        if (s === 'delivered') return 2;
-        if (s === 'returned') return 3;
-        return 4;
+      return {
+        source: 'osrm',
+        distanceM: Number.isFinite(distanceM) ? distanceM : null,
+        etaMin,
+        trafficText: 'حسب الطرق الفعلية'
       };
-
-      all.sort((a,b)=>{
-        const wa = weight(a), wb = weight(b);
-        if (wa !== wb) return wa - wb;
-        const ta = tsToMs(a.createdAt || a.nearbyAt || a.deliveredAt || a.returnedAt || 0);
-        const tb = tsToMs(b.createdAt || b.nearbyAt || b.deliveredAt || b.returnedAt || 0);
-        return tb - ta;
-      });
-      return all[0] || null;
     }
 
-    function computeOrderEta(order){
+    async function computeOrderEta(order){
       if (!order) return { etaText:'—', isNearby:false, distanceM:null };
       if (String(order.status || '') === 'nearby') return { etaText:'قريب جداً', isNearby:true, distanceM:0 };
       if (String(order.status || '') === 'delivered') return { etaText:'تم التسليم', isNearby:false, distanceM:0 };
@@ -350,16 +310,29 @@
         return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null };
       }
 
-      const distanceM = haversineMeters(lat1, lng1, lat2, lng2);
-      const isNearby = distanceM <= DELIVERY_ALLOWED_METERS;
-      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM };
+      const straightDistanceM = haversineMeters(lat1, lng1, lat2, lng2);
+      const isNearby = straightDistanceM <= DELIVERY_ALLOWED_METERS;
+      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM:straightDistanceM };
+
+      try {
+        const routeInfo = await fetchOsrmRouteInfo(lat1, lng1, lat2, lng2);
+        if (routeInfo && Number.isFinite(routeInfo.etaMin)) {
+          return {
+            etaText: formatEtaMinutes(routeInfo.etaMin),
+            isNearby:false,
+            distanceM: routeInfo.distanceM,
+            etaMin: routeInfo.etaMin,
+            routeModeText: routeInfo.trafficText || ''
+          };
+        }
+      } catch (_) {}
 
       const speedKmh = getPreferredDriverSpeedKmh(loc);
-      const etaMin = calcEtaMinutes(distanceM, speedKmh, ETA_FALLBACK_SPEED_KMH);
+      const etaMin = calcEtaMinutes(straightDistanceM, speedKmh, ETA_FALLBACK_SPEED_KMH);
       return {
         etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : 'حوالي 10-15 دقيقة',
         isNearby:false,
-        distanceM,
+        distanceM:straightDistanceM,
         etaMin
       };
     }
@@ -379,7 +352,7 @@
       pageError.textContent = '';
     }
 
-    function render(){
+    async function render(){
       if (!activeClient) return;
       clearError();
       clientValue.textContent = activeClient.name || 'زبون';
@@ -396,43 +369,6 @@
         nearbyNotice.className = 'notice';
         nearbyNotice.textContent = 'المندوب قريب منك الآن.';
         timeline.innerHTML = `
-          <div class="step active">
-            <div class="dot"></div>
-            <div>
-              <div class="ttl">لا يوجد طلب ظاهر حالياً</div>
-              <div class="meta">عند تسجيل طلب جديد لهذا الزبون سيظهر هنا مباشرة من نفس الرابط.</div>
-            </div>
-          </div>`;
-        lastUpdated.textContent = '';
-        return;
-      }
-
-      const etaBag = computeOrderEta(order);
-      const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
-      const finalStatus = etaBag.isNearby && order.status === 'registered' ? 'nearby' : order.status;
-
-      statusBadge.className = statusBadgeClass(finalStatus);
-      statusBadge.textContent = statusLabel(finalStatus);
-      etaValue.textContent = etaBag.etaText || '—';
-      driverValue.textContent = driverName || '—';
-
-      if (etaBag.isNearby || finalStatus === 'nearby') {
-        nearbyNotice.className = 'notice warn show';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
-      } else if (finalStatus === 'delivered') {
-        nearbyNotice.className = 'notice show';
-        nearbyNotice.textContent = 'تم تسليم الطلب بنجاح.';
-      } else if (finalStatus === 'returned') {
-        nearbyNotice.className = 'notice warn show';
-        nearbyNotice.textContent = 'هذا الطلب مسجل كراجع.';
-      } else {
-        nearbyNotice.className = 'notice';
-        nearbyNotice.textContent = 'المندوب قريب منك الآن.';
-      }
-
-      pageSub.textContent = `رقم الطلب: ${order.id} — آخر حالة محدثة للطلب الحالي.`;
-
-      timeline.innerHTML = `
         <div class="step ${finalStatus === 'registered' || finalStatus === 'nearby' || finalStatus === 'delivered' || finalStatus === 'returned' ? 'active' : ''}">
           <div class="dot"></div>
           <div>
