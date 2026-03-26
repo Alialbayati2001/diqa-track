@@ -201,7 +201,7 @@
     const ETA_MIN_MOVING_SPEED_KMH = 8;
     const ETA_MAX_REASONABLE_MOTO_SPEED_KMH = 95;
     const OSRM_ROUTE_API_BASE = 'https://router.project-osrm.org/route/v1/driving';
-    const ETA_SMOOTH_MAX_JUMP_MIN = 3;
+    const ETA_SMOOTH_MAX_JUMP_MIN = 2;
     const ETA_FREEZE_WHEN_STOPPED_MIN = 2;
     const ETA_RECALC_EVERY_MS = 60000;
     const ETA_STORAGE_PREFIX = 'diqa_track_eta_';
@@ -409,10 +409,10 @@
       if (Number.isFinite(currentMin) && Number.isFinite(oldMin)) {
         let nextMin = currentMin;
 
-        if (Math.abs(currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
-          nextMin = currentMin > oldMin
-            ? oldMin + ETA_SMOOTH_MAX_JUMP_MIN
-            : oldMin - ETA_SMOOTH_MAX_JUMP_MIN;
+        // عند الحركة فوق 8 نخلي الوقت ينخفض طبيعي حتى يبقى واقعي
+        // لكن إذا ارتفع فجأة بسبب توقف لحظي أو قراءة متذبذبة، نحد الارتفاع فقط
+        if (currentMin > oldMin && (currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
+          nextMin = oldMin + ETA_SMOOTH_MAX_JUMP_MIN;
         }
 
         nextMin = Math.max(1, Math.round(nextMin));
