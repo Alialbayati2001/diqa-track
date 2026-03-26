@@ -153,6 +153,10 @@
           <div id="eta-value" class="value">—</div>
         </div>
         <div class="card">
+          <div class="label">سرعة المندوب</div>
+          <div id="speed-value" class="value">—</div>
+        </div>
+        <div class="card">
           <div class="label">المندوب</div>
           <div id="driver-value" class="value sm">—</div>
         </div>
@@ -208,6 +212,7 @@
 
     const statusBadge = document.getElementById('status-badge');
     const etaValue = document.getElementById('eta-value');
+    const speedValue = document.getElementById('speed-value');
     const driverValue = document.getElementById('driver-value');
     const clientValue = document.getElementById('client-value');
     const invoiceValue = document.getElementById('invoice-value');
@@ -294,10 +299,26 @@
     function formatEtaMinutes(mins){
       const n = Number(mins);
       if (!Number.isFinite(n) || n <= 0) return '—';
-      if (n < 60) return `${Math.round(n)} د`;
-      const h = Math.floor(n / 60);
-      const m = Math.round(n % 60);
-      return m ? `${h} س ${m} د` : `${h} س`;
+
+      const total = Math.max(1, Math.round(n));
+      if (total < 60) {
+        if (total === 1) return 'دقيقة واحدة';
+        if (total === 2) return 'دقيقتان';
+        return `${total} دقائق`;
+      }
+
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+
+      let hourText = '';
+      if (h === 1) hourText = 'ساعة واحدة';
+      else if (h === 2) hourText = 'ساعتان';
+      else hourText = `${h} ساعات`;
+
+      if (!m) return hourText;
+      if (m === 1) return `${hourText} و دقيقة واحدة`;
+      if (m === 2) return `${hourText} و دقيقتان`;
+      return `${hourText} و ${m} دقائق`;
     }
 
     function formatMoneyIqd(value){
@@ -333,6 +354,46 @@
       return new Date(ms).toLocaleString('ar-IQ');
     }
 
+    function getOrderSavedSpeedKmh(order){
+      if (!order || typeof order !== 'object') return null;
+      const keys = ['speedKmh', 'driverSpeedKmh', 'liveSpeedKmh'];
+      for (const k of keys){
+        const n = Number(order[k]);
+        if (Number.isFinite(n) && n >= 0) return Math.round(n);
+      }
+      return null;
+    }
+
+    function getOrderSpeedInfo(order){
+      const liveLoc = driversLocationsCache[String(order?.assignedDriverId || '')] || null;
+      const savedSpeedKmh = getOrderSavedSpeedKmh(order);
+      const liveSpeedKmh = normalizePreferredMotoSpeed(
+        liveLoc && (liveLoc.traccarSpeedKmh ?? liveLoc.computedSpeedKmh ?? liveLoc.speedKmh)
+      );
+
+      let speedKmh = null;
+      if (Number.isFinite(savedSpeedKmh)) speedKmh = savedSpeedKmh;
+      else if (Number.isFinite(liveSpeedKmh)) speedKmh = Math.round(liveSpeedKmh);
+
+      const savedText = String(order?.speedText || '').trim();
+      let speedText = '—';
+      if (savedText && savedText !== '—') {
+        speedText = savedText;
+      } else if (Number.isFinite(speedKmh)) {
+        speedText = formatSpeedKmh(speedKmh);
+      }
+
+      return { speedKmh, speedText };
+    }
+
+    function formatEtaWithSpeed(etaText, speedText){
+      const eta = String(etaText || '—').trim() || '—';
+      const speed = String(speedText || '—').trim();
+      if (!speed || speed === '—') return eta;
+      if (eta === 'تم التسليم' || eta === 'تم إرجاع الطلب') return eta;
+      return `${eta} • ${speed}`;
+    }
+
 
     function getEtaStorageKey(order){
       const token = getToken() || 'no_token';
@@ -358,6 +419,8 @@
         isNearby: !!bag.isNearby,
         source: bag.source || 'computed',
         distanceM: Number.isFinite(Number(bag.distanceM)) ? Number(bag.distanceM) : null,
+        speedKmh: Number.isFinite(Number(bag.speedKmh)) ? Number(bag.speedKmh) : null,
+        speedText: bag.speedText || '—',
         computedAt: Date.now()
       };
       try {
@@ -367,64 +430,51 @@
 
     function smoothEtaBag(order, freshBag, liveLoc){
       if (!freshBag) return freshBag;
-
+      const now = Date.now();
       const old = loadEtaMemory(order);
       const currentMin = Number.isFinite(Number(freshBag.etaMin)) ? Number(freshBag.etaMin) : null;
       const oldMin = old && Number.isFinite(Number(old.etaMin)) ? Number(old.etaMin) : null;
       const liveSpeed = normalizePreferredMotoSpeed(liveLoc && (liveLoc.traccarSpeedKmh ?? liveLoc.computedSpeedKmh ?? liveLoc.speedKmh));
-      const isLowSpeed = Number.isFinite(liveSpeed) && liveSpeed <= ETA_MIN_MOVING_SPEED_KMH;
+      const stopped = Number.isFinite(liveSpeed) && liveSpeed <= ETA_MIN_MOVING_SPEED_KMH;
 
       let result = { ...freshBag };
 
-      if (result.isNearby || String(order.status || '') === 'nearby') {
-        result.etaMin = 0;
-        result.etaText = 'قريب جداً';
-        saveEtaMemory(order, result);
-        return result;
-      }
-      if (String(order.status || '') === 'delivered') {
-        result.etaMin = 0;
-        result.etaText = 'تم التسليم';
-        saveEtaMemory(order, result);
-        return result;
-      }
-      if (String(order.status || '') === 'returned') {
-        result.etaMin = null;
-        result.etaText = 'تم إرجاع الطلب';
-        saveEtaMemory(order, result);
-        return result;
+      if (old && (now - Number(old.computedAt || 0) < ETA_RECALC_EVERY_MS) && old.etaText && old.etaText !== '—') {
+        result = { ...result, ...old, source: old.source || result.source || 'smoothed' };
       }
 
-      // عند السرعة 0-8: جمد آخر ETA محفوظ بالكامل
-      if (isLowSpeed && old && old.etaText && old.etaText !== '—') {
-        result = {
-          ...result,
-          ...old,
-          source: 'frozen_low_speed'
-        };
-        saveEtaMemory(order, result);
-        return result;
-      }
-
-      // عند الرجوع للحركة فوق 8: استخدم ETA الجديد مباشرة
-      // نهدئ فقط الارتفاعات الكبيرة جداً، أما الانخفاض فينزل طبيعي
-      if (Number.isFinite(currentMin)) {
+      if (Number.isFinite(currentMin) && Number.isFinite(oldMin)) {
         let nextMin = currentMin;
 
-        if (Number.isFinite(oldMin) && currentMin > oldMin && (currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
-          nextMin = oldMin + ETA_SMOOTH_MAX_JUMP_MIN;
+        if (stopped && currentMin > oldMin) {
+          nextMin = oldMin;
+        }
+
+        if (Math.abs(currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
+          nextMin = currentMin > oldMin ? oldMin + ETA_SMOOTH_MAX_JUMP_MIN : oldMin - ETA_SMOOTH_MAX_JUMP_MIN;
+        }
+
+        if (stopped) {
+          nextMin = Math.min(nextMin, oldMin + ETA_FREEZE_WHEN_STOPPED_MIN);
         }
 
         nextMin = Math.max(1, Math.round(nextMin));
         result.etaMin = nextMin;
         result.etaText = formatEtaMinutes(nextMin);
-        result.source = 'live_after_move';
-      } else if (old && old.etaText && old.etaText !== '—') {
-        result = {
-          ...result,
-          ...old,
-          source: 'kept_previous_eta'
-        };
+        result.source = 'smoothed';
+      }
+
+      if (result.isNearby || String(order.status || '') === 'nearby') {
+        result.etaMin = 0;
+        result.etaText = 'قريب جداً';
+      }
+      if (String(order.status || '') === 'delivered') {
+        result.etaMin = 0;
+        result.etaText = 'تم التسليم';
+      }
+      if (String(order.status || '') === 'returned') {
+        result.etaMin = null;
+        result.etaText = 'تم إرجاع الطلب';
       }
 
       saveEtaMemory(order, result);
@@ -453,21 +503,21 @@
 
     async function computeOrderEta(order){
       if (!order) return { etaText:'—', isNearby:false, distanceM:null };
-      if (String(order.status || '') === 'nearby') return { etaText:'قريب جداً', isNearby:true, distanceM:0 };
-      if (String(order.status || '') === 'delivered') return { etaText:'تم التسليم', isNearby:false, distanceM:0 };
-      if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null };
+      if (String(order.status || '') === 'nearby') return { etaText:'قريب جداً', isNearby:true, distanceM:0, speedText:'—', speedKmh:null };
+      if (String(order.status || '') === 'delivered') return { etaText:'تم التسليم', isNearby:false, distanceM:0, speedText:'—', speedKmh:null };
+      if (String(order.status || '') === 'returned') return { etaText:'تم إرجاع الطلب', isNearby:false, distanceM:null, speedText:'—', speedKmh:null };
 
       const loc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
-      if (!loc) return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null };
+      if (!loc) return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null, speedText:'—', speedKmh:null };
 
       const lat1 = Number(loc.lat), lng1 = Number(loc.lng), lat2 = Number(order.lat), lng2 = Number(order.lng);
       if (![lat1,lng1,lat2,lng2].every(Number.isFinite)) {
-        return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null };
+        return { etaText:'حوالي 10-15 دقيقة', isNearby:false, distanceM:null, speedText:'—', speedKmh:null };
       }
 
       const straightDistanceM = haversineMeters(lat1, lng1, lat2, lng2);
       const isNearby = straightDistanceM <= DELIVERY_ALLOWED_METERS;
-      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM:straightDistanceM };
+      if (isNearby) return { etaText:'قريب جداً', isNearby:true, distanceM:straightDistanceM, speedText: formatSpeedKmh(getPreferredDriverSpeedKmh(loc)), speedKmh: getPreferredDriverSpeedKmh(loc) };
 
       try {
         const routeInfo = await fetchOsrmRouteInfo(lat1, lng1, lat2, lng2);
@@ -477,7 +527,9 @@
             isNearby:false,
             distanceM: routeInfo.distanceM,
             etaMin: routeInfo.etaMin,
-            routeModeText: routeInfo.trafficText || ''
+            routeModeText: routeInfo.trafficText || '',
+            speedText: formatSpeedKmh(getPreferredDriverSpeedKmh(loc)),
+            speedKmh: getPreferredDriverSpeedKmh(loc)
           };
         }
       } catch (_) {}
@@ -488,7 +540,9 @@
         etaText: Number.isFinite(etaMin) ? formatEtaMinutes(etaMin) : 'حوالي 10-15 دقيقة',
         isNearby:false,
         distanceM:straightDistanceM,
-        etaMin
+        etaMin,
+        speedText: formatSpeedKmh(speedKmh),
+        speedKmh
       };
     }
 
@@ -636,25 +690,41 @@
     async function resolveOrderPresentation(order){
       const finalStatus = String(order.status || 'registered');
       const driverName = order.assignedDriverName || driverNameById(order.assignedDriverId);
+      const speedInfo = getOrderSpeedInfo(order);
       let etaBag = {
         etaText: String(order.etaText || '—'),
         etaMin: Number.isFinite(Number(order.etaMinutes)) ? Number(order.etaMinutes) : null,
         isNearby: finalStatus === 'nearby',
         distanceM: null,
+        speedKmh: speedInfo.speedKmh,
+        speedText: speedInfo.speedText,
         source: (order.etaText || Number.isFinite(Number(order.etaMinutes))) ? 'saved' : 'computed'
       };
       const hasManagerEta = (String(order.etaText || '').trim() && String(order.etaText || '').trim() !== '—') || Number.isFinite(Number(order.etaMinutes));
       if (!hasManagerEta) {
         try { etaBag = await computeOrderEta(order); } catch (_) {}
+      } else {
+        etaBag.speedKmh = speedInfo.speedKmh;
+        etaBag.speedText = speedInfo.speedText;
       }
       const liveLoc = driversLocationsCache[String(order.assignedDriverId || '')] || null;
       etaBag = smoothEtaBag(order, etaBag, liveLoc);
+      if (!etaBag.speedText || etaBag.speedText === '—') {
+        etaBag.speedText = speedInfo.speedText;
+      }
+      if (!Number.isFinite(Number(etaBag.speedKmh)) && Number.isFinite(Number(speedInfo.speedKmh))) {
+        etaBag.speedKmh = speedInfo.speedKmh;
+      }
       return {
         order,
         finalStatus,
         driverName,
         invoiceAmount: pickInvoiceAmount(order),
         etaBag,
+        speedInfo: {
+          speedKmh: Number.isFinite(Number(etaBag.speedKmh)) ? Number(etaBag.speedKmh) : speedInfo.speedKmh,
+          speedText: etaBag.speedText || speedInfo.speedText || '—'
+        },
         stamp: tsToMs(order.updatedAt || order.deliveredAt || order.returnedAt || order.nearbyAt || order.createdAt || 0)
       };
     }
@@ -670,6 +740,8 @@
         const workDate = order.workDate || '—';
         const amount = item.invoiceAmount != null ? formatMoneyIqd(item.invoiceAmount) : '—';
         const etaText = item.etaBag && item.etaBag.etaText ? item.etaBag.etaText : '—';
+        const speedText = item.speedInfo && item.speedInfo.speedText ? item.speedInfo.speedText : '—';
+        const etaAndSpeedText = formatEtaWithSpeed(etaText, speedText);
         const driverText = item.driverName || '—';
         const updatedText = item.stamp ? formatDate(item.stamp) : '—';
         return `
@@ -680,7 +752,7 @@
             </div>
             <div class="order-grid">
               <div class="order-mini"><div class="k">المندوب</div><div class="v">${escapeHtml(driverText)}</div></div>
-              <div class="order-mini"><div class="k">الوصول المتوقع</div><div class="v">${escapeHtml(etaText)}</div></div>
+              <div class="order-mini"><div class="k">الوصول المتوقع / السرعة</div><div class="v">${escapeHtml(etaAndSpeedText)}</div></div>
               <div class="order-mini"><div class="k">مبلغ الطلب</div><div class="v">${escapeHtml(amount)}</div></div>
               <div class="order-mini"><div class="k">تاريخ الطلب</div><div class="v">${escapeHtml(workDate)}</div></div>
               <div class="order-mini"><div class="k">آخر تحديث</div><div class="v">${escapeHtml(updatedText)}</div></div>
@@ -702,6 +774,7 @@
         statusBadge.textContent = 'لا يوجد طلب حالي';
         etaValue.textContent = '—';
         driverValue.textContent = '—';
+        speedValue.textContent = '—';
         invoiceValue.textContent = '—';
         pageSub.textContent = 'لا يوجد طلب حالي أو سابق مرتبط بهذا الزبون.';
         nearbyNotice.className = 'notice';
@@ -732,9 +805,14 @@
         applyStatusUi(main.finalStatus);
       }
 
-      etaValue.textContent = presentations.length > 1
+      const mainEtaText = presentations.length > 1
         ? (main.etaBag && main.etaBag.etaText ? `${main.etaBag.etaText} (الأقرب)` : '—')
         : ((main.etaBag && main.etaBag.etaText) || '—');
+
+      etaValue.textContent = mainEtaText;
+      speedValue.textContent = presentations.length > 1
+        ? ((main.speedInfo && main.speedInfo.speedText) ? `${main.speedInfo.speedText} (للأقرب)` : '—')
+        : ((main.speedInfo && main.speedInfo.speedText) || '—');
 
       driverValue.textContent = uniqueDrivers.length > 1
         ? uniqueDrivers.join('، ')
@@ -782,6 +860,7 @@
           clientValue.textContent = '—';
           driverValue.textContent = '—';
           etaValue.textContent = '—';
+          speedValue.textContent = '—';
           invoiceValue.textContent = '—';
           statusBadge.className = 'badge ret';
           statusBadge.textContent = 'الرابط غير معروف';
