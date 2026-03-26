@@ -201,7 +201,7 @@
     const ETA_MIN_MOVING_SPEED_KMH = 8;
     const ETA_MAX_REASONABLE_MOTO_SPEED_KMH = 95;
     const OSRM_ROUTE_API_BASE = 'https://router.project-osrm.org/route/v1/driving';
-    const ETA_SMOOTH_MAX_JUMP_MIN = 2;
+    const ETA_SMOOTH_MAX_JUMP_MIN = 3;
     const ETA_FREEZE_WHEN_STOPPED_MIN = 2;
     const ETA_RECALC_EVERY_MS = 60000;
     const ETA_STORAGE_PREFIX = 'diqa_track_eta_';
@@ -367,11 +367,12 @@
 
     function smoothEtaBag(order, freshBag, liveLoc){
       if (!freshBag) return freshBag;
+
       const old = loadEtaMemory(order);
       const currentMin = Number.isFinite(Number(freshBag.etaMin)) ? Number(freshBag.etaMin) : null;
       const oldMin = old && Number.isFinite(Number(old.etaMin)) ? Number(old.etaMin) : null;
       const liveSpeed = normalizePreferredMotoSpeed(liveLoc && (liveLoc.traccarSpeedKmh ?? liveLoc.computedSpeedKmh ?? liveLoc.speedKmh));
-      const frozenByLowSpeed = Number.isFinite(liveSpeed) && liveSpeed === 0;
+      const isLowSpeed = Number.isFinite(liveSpeed) && liveSpeed <= ETA_MIN_MOVING_SPEED_KMH;
 
       let result = { ...freshBag };
 
@@ -381,14 +382,12 @@
         saveEtaMemory(order, result);
         return result;
       }
-
       if (String(order.status || '') === 'delivered') {
         result.etaMin = 0;
         result.etaText = 'تم التسليم';
         saveEtaMemory(order, result);
         return result;
       }
-
       if (String(order.status || '') === 'returned') {
         result.etaMin = null;
         result.etaText = 'تم إرجاع الطلب';
@@ -396,7 +395,8 @@
         return result;
       }
 
-      if (frozenByLowSpeed && old && old.etaText && old.etaText !== '—') {
+      // عند السرعة 0-8: جمد آخر ETA محفوظ بالكامل
+      if (isLowSpeed && old && old.etaText && old.etaText !== '—') {
         result = {
           ...result,
           ...old,
@@ -406,19 +406,25 @@
         return result;
       }
 
-      if (Number.isFinite(currentMin) && Number.isFinite(oldMin)) {
+      // عند الرجوع للحركة فوق 8: استخدم ETA الجديد مباشرة
+      // نهدئ فقط الارتفاعات الكبيرة جداً، أما الانخفاض فينزل طبيعي
+      if (Number.isFinite(currentMin)) {
         let nextMin = currentMin;
 
-        // عند الحركة فوق 8 نخلي الوقت ينخفض طبيعي حتى يبقى واقعي
-        // لكن إذا ارتفع فجأة بسبب توقف لحظي أو قراءة متذبذبة، نحد الارتفاع فقط
-        if (currentMin > oldMin && (currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
+        if (Number.isFinite(oldMin) && currentMin > oldMin && (currentMin - oldMin) > ETA_SMOOTH_MAX_JUMP_MIN) {
           nextMin = oldMin + ETA_SMOOTH_MAX_JUMP_MIN;
         }
 
         nextMin = Math.max(1, Math.round(nextMin));
         result.etaMin = nextMin;
         result.etaText = formatEtaMinutes(nextMin);
-        result.source = 'smoothed_after_move';
+        result.source = 'live_after_move';
+      } else if (old && old.etaText && old.etaText !== '—') {
+        result = {
+          ...result,
+          ...old,
+          source: 'kept_previous_eta'
+        };
       }
 
       saveEtaMemory(order, result);
